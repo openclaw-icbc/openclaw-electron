@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <title>OpenClaw Desktop Client</title>
+    <!-- Load Noto Sans SC font for Chinese character support -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div id="app">
+        <!-- Main App Panel - WeChat Style Layout -->
+        <div id="app-panel" class="panel">
+            <div class="app-layout">
+                <!-- Sidebar -->
+                <div class="sidebar">
+                    <div class="sidebar-header">
+                        <h2>OpenClaw</h2>
+                        <div id="connection-indicator" class="connection-indicator offline"></div>
+                    </div>
+
+                    <nav class="sidebar-nav">
+                        <div class="nav-item active" data-view="chat">
+                            <span class="nav-icon">💬</span>
+                            <span class="nav-text">Chat</span>
+                        </div>
+                        <div class="nav-item" data-view="sessions">
+                            <span class="nav-icon">📋</span>
+                            <span class="nav-text">Sessions</span>
+                        </div>
+                        <div class="nav-item" data-view="config">
+                            <span class="nav-icon">⚙️</span>
+                            <span class="nav-text">Config</span>
+                        </div>
+                        <div class="nav-item" data-view="logs">
+                            <span class="nav-icon">📝</span>
+                            <span class="nav-text">Logs</span>
+                        </div>
+                    </nav>
+
+                    <div class="sidebar-content">
+                        <!-- Chat View Sidebar -->
+                        <div id="chat-sidebar" class="sidebar-view active">
+                            <button id="new-session-btn" class="btn-new-session">+ New Chat</button>
+                            <div id="sessions-list" class="sessions-list"></div>
+                        </div>
+
+                        <!-- Sessions View Sidebar -->
+                        <div id="sessions-sidebar" class="sidebar-view hidden">
+                            <div id="all-sessions-list" class="sessions-list"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Main Content Area -->
+                <div class="main-content">
+                    <!-- Chat View -->
+                    <div id="chat-view" class="content-view active">
+                        <div class="chat-header">
+                            <h3 id="current-session-title">Select or create a chat</h3>
+                            <div id="session-status" class="status-small"></div>
+                        </div>
+                        <div id="chat-messages" class="chat-messages">
+                            <div class="empty-state">
+                                <h3>欢迎使用 OpenClaw Desktop Client</h3>
+                                <p>开始使用：</p>
+                                <ol style="text-align: left; max-width: 400px; margin: 20px auto;">
+                                    <li>点击左侧边栏的 <strong>⚙️ Config</strong></li>
+                                    <li>配置你的 Gateway URL 和 token</li>
+                                    <li>点击 <strong>Save & Connect</strong></li>
+                                    <li>在左侧选择一个会话或点击 <strong>+ New Chat</strong> 创建新会话</li>
+                                    <li>开始聊天！</li>
+                                </ol>
+                            </div>
+                        </div>
+                        <div class="chat-input-area">
+                            <textarea id="message-input" placeholder="请先在左侧选择或创建一个会话 (Ctrl+Enter 发送)" rows="3" disabled></textarea>
+                            <div class="input-actions">
+                                <button id="send-btn" class="btn btn-primary" disabled>发送</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Config View -->
+                    <div id="config-view" class="content-view hidden">
+                        <div class="view-header">
+                            <h2>Configuration</h2>
+                        </div>
+                        <div class="config-content">
+                            <div class="form-group">
+                                <label for="config-gateway-url">Gateway URL</label>
+                                <input type="text" id="config-gateway-url" value="ws://localhost:18789" placeholder="ws://localhost:18789">
+                            </div>
+                            <div class="form-group">
+                                <label for="config-gateway-token">Gateway Token (optional)</label>
+                                <input type="password" id="config-gateway-token" placeholder="Enter gateway token">
+                            </div>
+                            <div class="form-group">
+                                <label for="config-gateway-password">Gateway Password (optional)</label>
+                                <input type="password" id="config-gateway-password" placeholder="Enter gateway password">
+                            </div>
+                            <div class="button-group">
+                                <button id="test-connection-btn" class="btn btn-secondary">Test Connection</button>
+                                <button id="save-config-btn" class="btn btn-primary">Save & Connect</button>
+                            </div>
+                            <div id="config-status" class="status"></div>
+                        </div>
+                    </div>
+
+                    <!-- Logs View -->
+                    <div id="logs-view" class="content-view hidden">
+                        <div class="view-header">
+                            <h2>Client Logs</h2>
+                        </div>
+                        <div class="logs-content-wrapper">
+                            <div class="logs-controls">
+                                <select id="log-level-filter">
+                                    <option value="">All Levels</option>
+                                    <option value="info">Info</option>
+                                    <option value="warn">Warning</option>
+                                    <option value="error">Error</option>
+                                    <option value="debug">Debug</option>
+                                </select>
+                                <input type="number" id="log-limit" value="500" min="10" max="5000">
+                                <button id="refresh-logs-btn" class="btn btn-small">Refresh</button>
+                                <button id="clear-logs-btn" class="btn btn-small">Clear Logs</button>
+                            </div>
+                            <pre id="logs-content" class="logs-content"></pre>
+                        </div>
+                    </div>
+
+                    <!-- Sessions Detail View -->
+                    <div id="sessions-view" class="content-view hidden">
+                        <div class="view-header">
+                            <h2>All Sessions</h2>
+                        </div>
+                        <div id="all-sessions-content" class="sessions-content"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Loading Overlay -->
+        <div id="loading-overlay" class="overlay hidden">
+            <div class="spinner"></div>
+            <div id="loading-message">Loading...</div>
+        </div>
+
+        <!-- Toast Container -->
+        <div id="toast-container" class="toast-container"></div>
+    </div>
+
+    <script>
+        // Inline debug script to verify JavaScript is working
+        console.log('=== INDEX.HTML LOADED ===');
+        console.log('Document ready state:', document.readyState);
+        console.log('window.electronAPI available:', !!window.electronAPI);
+        if (window.electronAPI) {
+            console.log('electronAPI methods:', Object.keys(window.electronAPI));
+        }
+
+        // Windows 高DPI 修复脚本
+        (function() {
+            const dpr = window.devicePixelRatio || 1;
+            console.log('Device Pixel Ratio:', dpr);
+
+            // 如果是在高分屏上（Windows 200%缩放）
+            if (dpr >= 1.5) {
+                // 设置文档的devicePixelRatio
+                document.documentElement.setAttribute('data-dpr', dpr);
+
+                // 确保body元素有正确的字体渲染
+                if (document.body) {
+                    document.body.style.webkitFontSmoothing = 'antialiased';
+                    document.body.style.mozOsxFontSmoothing = 'grayscale';
+                }
+
+                console.log('High DPI optimizations applied for DPR:', dpr);
+            }
+        })();
+    </script>
+    <script src="app.js"></script>
+</body>
+</html>
