@@ -17,6 +17,16 @@ export interface ElectronAPI {
   listSessions: (params?: any) => Promise<{ success: boolean; data?: any; error?: string }>;
   resolveSession: (params?: any) => Promise<{ success: boolean; data?: any; error?: string }>;
 
+  // Agents
+  listAgents: () => Promise<{ success: boolean; data?: any; error?: string }>;
+
+  // Cron Jobs
+  listCronJobs: (params?: any) => Promise<{ success: boolean; data?: any; error?: string }>;
+  addCronJob: (job: any) => Promise<{ success: boolean; data?: any; error?: string }>;
+  updateCronJob: (id: string, patch: any) => Promise<{ success: boolean; data?: any; error?: string }>;
+  removeCronJob: (id: string) => Promise<{ success: boolean; data?: any; error?: string }>;
+  runCronJob: (id: string, mode?: string) => Promise<{ success: boolean; data?: any; error?: string }>;
+
   // Logs
   getLogs: (options?: any) => Promise<any[]>;
   clearLogs: () => Promise<boolean>;
@@ -43,6 +53,14 @@ const electronAPI: ElectronAPI = {
 
   listSessions: (params) => ipcRenderer.invoke('list-sessions', params),
   resolveSession: (params) => ipcRenderer.invoke('resolve-session', params),
+
+  listAgents: () => ipcRenderer.invoke('agents-list'),
+
+  listCronJobs: (params) => ipcRenderer.invoke('cron-list', params),
+  addCronJob: (job) => ipcRenderer.invoke('cron-add', job),
+  updateCronJob: (id, patch) => ipcRenderer.invoke('cron-update', { id, patch }),
+  removeCronJob: (id) => ipcRenderer.invoke('cron-remove', { id }),
+  runCronJob: (id, mode) => ipcRenderer.invoke('cron-run', { id, mode }),
 
   getLogs: (options) => ipcRenderer.invoke('get-logs', options),
   clearLogs: () => ipcRenderer.invoke('clear-logs'),

@@ -60,6 +60,12 @@ function generateIdentity(): DeviceIdentity {
   const privateKeyPem = privateKey.export({ type: 'pkcs8', format: 'pem' }).toString();
   const deviceId = fingerprintPublicKey(publicKeyPem);
 
+  console.log('=== Device Identity Generated ===');
+  console.log('deviceId:', deviceId);
+  console.log('publicKeyPem:', publicKeyPem);
+  console.log('privateKeyPem:', privateKeyPem);
+  console.log('================================');
+
   return {
     deviceId,
     publicKeyPem,
@@ -69,6 +75,7 @@ function generateIdentity(): DeviceIdentity {
 
 export function loadOrCreateDeviceIdentity(): DeviceIdentity {
   const storagePath = getStoragePath();
+  console.log('Device Identity Storage Path:', storagePath);
 
   try {
     if (fs.existsSync(storagePath)) {
@@ -89,6 +96,11 @@ export function loadOrCreateDeviceIdentity(): DeviceIdentity {
             deviceId: derivedId,
           };
           fs.writeFileSync(storagePath, JSON.stringify(updated, null, 2));
+          console.log('=== Device Identity Loaded (Updated) ===');
+          console.log('deviceId:', derivedId);
+          console.log('publicKeyPem:', parsed.publicKeyPem);
+          console.log('privateKeyPem:', parsed.privateKeyPem);
+          console.log('========================================');
           return {
             deviceId: derivedId,
             publicKeyPem: parsed.publicKeyPem,
@@ -96,6 +108,11 @@ export function loadOrCreateDeviceIdentity(): DeviceIdentity {
           };
         }
 
+        console.log('=== Device Identity Loaded ===');
+        console.log('deviceId:', parsed.deviceId);
+        console.log('publicKeyPem:', parsed.publicKeyPem);
+        console.log('privateKeyPem:', parsed.privateKeyPem);
+        console.log('===============================');
         return {
           deviceId: parsed.deviceId,
           publicKeyPem: parsed.publicKeyPem,

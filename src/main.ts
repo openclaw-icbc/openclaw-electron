@@ -191,12 +191,85 @@ ipcMain.handle('resolve-session', async (event, params) => {
   }
 });
 
+ipcMain.handle('agents-list', async () => {
+  if (!gatewayClient) {
+    return { success: false, error: 'Not connected to gateway' };
+  }
+  try {
+    const result = await gatewayClient.listAgents();
+    return { success: true, data: result };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+});
+
 ipcMain.handle('get-logs', async (event, options) => {
   return logManager.getLogs(options);
 });
 
 ipcMain.handle('clear-logs', async () => {
   return logManager.clearLogs();
+});
+
+// Cron Jobs
+ipcMain.handle('cron-list', async (event, params) => {
+  if (!gatewayClient) {
+    return { success: false, error: 'Not connected to gateway' };
+  }
+  try {
+    const result = await gatewayClient.listCronJobs(params);
+    return { success: true, data: result };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('cron-add', async (event, job) => {
+  if (!gatewayClient) {
+    return { success: false, error: 'Not connected to gateway' };
+  }
+  try {
+    const result = await gatewayClient.addCronJob(job);
+    return { success: true, data: result };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('cron-update', async (event, params) => {
+  if (!gatewayClient) {
+    return { success: false, error: 'Not connected to gateway' };
+  }
+  try {
+    const result = await gatewayClient.updateCronJob(params.id, params.patch);
+    return { success: true, data: result };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('cron-remove', async (event, params) => {
+  if (!gatewayClient) {
+    return { success: false, error: 'Not connected to gateway' };
+  }
+  try {
+    const result = await gatewayClient.removeCronJob(params.id);
+    return { success: true, data: result };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('cron-run', async (event, params) => {
+  if (!gatewayClient) {
+    return { success: false, error: 'Not connected to gateway' };
+  }
+  try {
+    const result = await gatewayClient.runCronJob(params.id, params.mode);
+    return { success: true, data: result };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
 });
 
 // App lifecycle

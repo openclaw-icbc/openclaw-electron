@@ -32,6 +32,10 @@
                             <span class="nav-icon">📋</span>
                             <span class="nav-text">Sessions</span>
                         </div>
+                        <div class="nav-item" data-view="cron">
+                            <span class="nav-icon">⏰</span>
+                            <span class="nav-text">Cron</span>
+                        </div>
                         <div class="nav-item" data-view="config">
                             <span class="nav-icon">⚙️</span>
                             <span class="nav-text">Config</span>
@@ -139,6 +143,15 @@
                             <h2>All Sessions</h2>
                         </div>
                         <div id="all-sessions-content" class="sessions-content"></div>
+                    </div>
+
+                    <!-- Cron Jobs View -->
+                    <div id="cron-view" class="content-view hidden">
+                        <div class="view-header">
+                            <h2>Scheduled Tasks</h2>
+                            <button id="add-cron-btn" class="btn btn-primary">+ Add Task</button>
+                        </div>
+                        <div id="cron-jobs-content" class="cron-jobs-content"></div>
                     </div>
                 </div>
             </div>

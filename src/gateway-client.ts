@@ -395,6 +395,32 @@ export class GatewayClient extends EventEmitter {
     await this.request('sessions.delete', { key, deleteTranscript });
   }
 
+  // Agents methods
+  async listAgents(): Promise<any> {
+    return this.request('agents.list', {});
+  }
+
+  // Cron methods
+  async listCronJobs(params?: any): Promise<any> {
+    return this.request('cron.list', params || {});
+  }
+
+  async addCronJob(job: any): Promise<any> {
+    return this.request('cron.add', job);
+  }
+
+  async updateCronJob(id: string, patch: any): Promise<any> {
+    return this.request('cron.update', { id, patch });
+  }
+
+  async removeCronJob(id: string): Promise<any> {
+    return this.request('cron.remove', { id });
+  }
+
+  async runCronJob(id: string, mode?: string): Promise<any> {
+    return this.request('cron.run', { id, mode: mode || 'force' });
+  }
+
   // Presence method
   async getSystemPresence(): Promise<any> {
     return this.request('system-presence', {});
