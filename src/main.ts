@@ -33,6 +33,28 @@ if (process.platform === 'win32') {
   console.log('✅ 高DPI设置已应用\n');
 }
 
+// Linux/WSL 字体渲染优化
+if (process.platform === 'linux') {
+  console.log('\n🔧 应用Linux字体渲染优化...');
+
+  // 禁用字体合成，使用系统字体配置
+  app.commandLine.appendSwitch('disable-font-subpixel-positioning');
+  // 启用字体 hinting
+  app.commandLine.appendSwitch('enable-font-antialiasing');
+  // 使用系统字体配置
+  app.commandLine.appendSwitch('font-render-hinting', 'slight');
+
+  // 强制设置默认字体族（解决中文方块问题）
+  app.commandLine.appendSwitch('default-font-family', 'Noto Sans CJK SC,WenQuanYi Micro Hei,Noto Sans SC,sans-serif');
+  app.commandLine.appendSwitch('default-font-family-standard', 'Noto Sans CJK SC,WenQuanYi Micro Hei,Noto Sans SC,sans-serif');
+  app.commandLine.appendSwitch('default-font-family-sans-serif', 'Noto Sans CJK SC,WenQuanYi Micro Hei,Noto Sans SC,sans-serif');
+  app.commandLine.appendSwitch('default-font-family-serif', 'Noto Serif CJK SC,Source Han Serif CN,serif');
+  app.commandLine.appendSwitch('default-font-family-monospace', 'Noto Sans Mono CJK SC,WenQuanYi Micro Hei Mono,monospace');
+
+  console.log('  ✓ Linux字体渲染优化已应用');
+  console.log('  ✓ 默认字体族已设置为中文字体\n');
+}
+
 let mainWindow: BrowserWindow | null = null;
 let gatewayClient: GatewayClient | null = null;
 let configManager: ConfigManager;
@@ -66,15 +88,62 @@ function createWindow() {
     } : {}),
   });
 
-  // 设置额外的渲染选项
+  // Load the index.html of the app
+  mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
+
+  // 确保正确的UTF-8编码
+  mainWindow.webContents.on('did-start-loading', () => {
+    mainWindow?.webContents.executeJavaScript(`
+      // 强制设置文档编码为UTF-8
+      if (document.charset) {
+        document.charset = 'UTF-8';
+      }
+      // 设置默认字符集
+      if (document.characterSet) {
+        document.characterSet = 'UTF-8';
+      }
+    `).catch(() => {});
+  });
+
+  // 页面加载完成后再次确保编码设置和字体
   mainWindow.webContents.on('did-finish-load', () => {
     // 设置页面的缩放因子，确保在高DPI屏幕上清晰
     const scaleFactor = 1.0; // 可以根据需要调整
     mainWindow?.webContents.setZoomFactor(scaleFactor);
-  });
 
-  // Load the index.html of the app
-  mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
+    // 再次强制UTF-8编码和中文字体
+    mainWindow?.webContents.executeJavaScript(`
+      document.charset = 'UTF-8';
+      if (document.characterSet) {
+        document.characterSet = 'UTF-8';
+      }
+
+      // 强制注入中文字体样式（解决WSL/Linux中文方块问题）
+      const style = document.createElement('style');
+      style.textContent = \`
+        @font-face {
+          font-family: 'ChineseFont';
+          src: local('Noto Sans CJK SC'), local('WenQuanYi Micro Hei'),
+               local('Noto Sans SC'), local('Source Han Sans CN'),
+               local('Microsoft YaHei'), local('PingFang SC');
+          font-display: swap;
+        }
+        * {
+          font-family: 'ChineseFont', 'Noto Sans CJK SC', 'WenQuanYi Micro Hei',
+                       'Noto Sans SC', 'Microsoft YaHei', 'PingFang SC',
+                       -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+                       sans-serif !important;
+        }
+        code, pre, .font-mono {
+          font-family: 'Noto Sans Mono CJK SC', 'WenQuanYi Zen Hei Mono',
+                       ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+                       monospace !important;
+        }
+      \`;
+      document.head.appendChild(style);
+      console.log('[Electron] 中文字体样式已注入');
+    `).catch(() => {});
+  });
 
   // 等待窗口加载完成后显示，避免视觉闪烁
   mainWindow.once('ready-to-show', () => {

@@ -1,7 +1,35 @@
-@import "tailwindcss";
+/* 强制所有元素使用中文字体 - 跨平台兼容 */
+* {
+  font-family:
+    /* Windows 中文字体 */
+    "Microsoft YaHei", "微软雅黑",
+    /* macOS 中文字体 */
+    "PingFang SC", "Hiragino Sans GB",
+    /* Linux 中文字体 - 优先 */
+    "Noto Sans CJK SC", "WenQuanYi Micro Hei", "WenQuanYi Zen Hei",
+    /* 通用系统字体 */
+    "Noto Sans SC", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, "Liberation Sans", sans-serif,
+    /* Emoji 字体 */
+    "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji" !important;
+}
 
 /* Custom Styles - Tailwind CSS v4 compatible */
+@import "tailwindcss";
 :root {
+  /* 覆盖 Tailwind 默认字体 - 添加中文字体支持 */
+  --font-sans:
+    /* Windows 中文字体 */
+    "Microsoft YaHei", "微软雅黑",
+    /* macOS 中文字体 */
+    "PingFang SC", "Hiragino Sans GB",
+    /* Linux 中文字体 */
+    "Noto Sans CJK SC", "WenQuanYi Micro Hei", "WenQuanYi Zen Hei",
+    /* Tailwind 默认 */
+    ui-sans-serif, system-ui, sans-serif,
+    /* Emoji */
+    "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+
   --background: 0 0% 100%;
   --foreground: 0 0% 15%;
 
@@ -44,7 +72,8 @@
 body {
   background-color: hsl(var(--background));
   color: hsl(var(--foreground));
-  font-family: "Microsoft YaHei", "微软雅黑", "Noto Sans SC", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC", "Hiragino Sans GB", sans-serif;
+  /* 使用 Tailwind CSS 变量，已在 :root 中覆盖为中文字体 */
+  font-family: var(--font-sans);
   font-feature-settings: "rlig" 1, "calt" 1;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
