@@ -44,7 +44,7 @@ function initializeElements() {
     settingsBtn: document.getElementById('settings-btn'),
     settingsDialog: document.getElementById('settings-dialog'),
     settingsCloseBtn: document.getElementById('settings-close-btn'),
-    settingsNavItems: document.querySelectorAll('.settings-nav-item'),
+    settingsNavItems: document.querySelectorAll('.tabs-trigger'),
     settingsContentViews: document.querySelectorAll('.settings-content-view'),
 
     // Settings - Sessions
@@ -74,7 +74,14 @@ function initializeElements() {
     loadingMessage: document.getElementById('loading-message'),
 
     // Toast
-    toastContainer: document.getElementById('toast-container')
+    toastContainer: document.getElementById('toast-container'),
+
+    // Confirm Dialog
+    confirmDialogOverlay: document.getElementById('confirm-dialog-overlay'),
+    confirmDialogTitle: document.getElementById('confirm-dialog-title'),
+    confirmDialogMessage: document.getElementById('confirm-dialog-message'),
+    confirmDialogCancelBtn: document.getElementById('confirm-dialog-cancel-btn'),
+    confirmDialogConfirmBtn: document.getElementById('confirm-dialog-confirm-btn')
   };
 
   console.log('Elements initialized:', Object.keys(elements));
@@ -99,6 +106,40 @@ function showToast(message, type = 'info') {
   setTimeout(() => {
     toast.remove();
   }, 3000);
+}
+
+// Custom confirm dialog that returns a Promise
+function showConfirmDialog(title, message, confirmButtonText = 'Confirm', cancelButtonText = 'Cancel') {
+  return new Promise((resolve) => {
+    // Set dialog content
+    elements.confirmDialogTitle.textContent = title;
+    elements.confirmDialogMessage.textContent = message;
+    elements.confirmDialogConfirmBtn.textContent = confirmButtonText;
+    elements.confirmDialogCancelBtn.textContent = cancelButtonText;
+
+    // Show dialog
+    elements.confirmDialogOverlay.classList.remove('hidden');
+
+    // Handle confirm button click
+    const handleConfirm = () => {
+      elements.confirmDialogOverlay.classList.add('hidden');
+      elements.confirmDialogConfirmBtn.removeEventListener('click', handleConfirm);
+      elements.confirmDialogCancelBtn.removeEventListener('click', handleCancel);
+      resolve(true);
+    };
+
+    // Handle cancel button click
+    const handleCancel = () => {
+      elements.confirmDialogOverlay.classList.add('hidden');
+      elements.confirmDialogConfirmBtn.removeEventListener('click', handleConfirm);
+      elements.confirmDialogCancelBtn.removeEventListener('click', handleCancel);
+      resolve(false);
+    };
+
+    // Add event listeners
+    elements.confirmDialogConfirmBtn.addEventListener('click', handleConfirm);
+    elements.confirmDialogCancelBtn.addEventListener('click', handleCancel);
+  });
 }
 
 // Custom prompt dialog (replaces browser's prompt() which doesn't work in Electron)
@@ -318,9 +359,9 @@ function showConfigStatus(message, type) {
 
 async function saveConfig() {
   const config = {
-    url: elements.configGatewayUrl.value.trim(),
-    token: elements.configGatewayToken.value.trim(),
-    password: elements.configGatewayPassword.value.trim()
+    url: elements.settingsConfigGatewayUrl.value.trim(),
+    token: elements.settingsConfigGatewayToken.value.trim(),
+    password: elements.settingsConfigGatewayPassword.value.trim()
   };
 
   if (!config.url) {
@@ -731,7 +772,14 @@ function renderLogs(logs) {
 }
 
 async function clearLogs() {
-  if (confirm('Are you sure you want to clear all logs?')) {
+  const confirmed = await showConfirmDialog(
+    'Clear Logs',
+    'Are you sure you want to clear all logs?',
+    'Clear',
+    'Cancel'
+  );
+
+  if (confirmed) {
     try {
       await window.electronAPI.clearLogs();
       showToast('Logs cleared successfully', 'success');
@@ -1575,39 +1623,7 @@ async function addCronJob() {
     return;
   }
 
-  const result = await showAddCronJobDialog();
-
-  if (!result) {
-    return; // User cancelled
-  }
-
-  const { job, isEdit } = result;
-
-  showLoading(isEdit ? 'Updating scheduled task...' : 'Creating scheduled task...');
-
-  try {
-    let apiResult;
-    if (isEdit) {
-      // For update, Gateway expects { jobId, patch } format
-      const jobId = job.id;
-      const { id, ...patch } = job; // Remove id from job to create patch
-      apiResult = await window.electronAPI.updateCronJob(jobId, patch);
-    } else {
-      apiResult = await window.electronAPI.addCronJob(job);
-    }
-
-    if (apiResult.success) {
-      showToast(isEdit ? 'Task updated successfully!' : 'Scheduled task created successfully!', 'success');
-      await loadCronJobs(); // Reload the list
-    } else {
-      showToast(`Failed to ${isEdit ? 'update' : 'create'} task: ${apiResult.error}`, 'error');
-    }
-  } catch (error) {
-    console.error('Failed to save cron job:', error);
-    showToast(`Error ${isEdit ? 'updating' : 'creating'} task: ${error.message}`, 'error');
-  } finally {
-    hideLoading();
-  }
+  showCronEditForm(null);
 }
 
 async function editCronJob(jobId) {
@@ -1623,33 +1639,268 @@ async function editCronJob(jobId) {
     return;
   }
 
-  const result = await showAddCronJobDialog(job);
+  showCronEditForm(job);
+}
 
-  if (!result) {
-    return; // User cancelled
-  }
+async function showCronEditForm(existingJob = null) {
+  const isEdit = !!existingJob;
+  const title = isEdit ? 'Edit Scheduled Task' : 'Add Scheduled Task';
 
-  const { job: updatedJob } = result;
-
-  showLoading('Updating scheduled task...');
-
+  // Load agents list
+  let agents = [];
   try {
-    // Gateway expects { jobId, patch } format
-    const { id, ...patch } = updatedJob; // Remove id from job to create patch
-    const apiResult = await window.electronAPI.updateCronJob(jobId, patch);
-
-    if (apiResult.success) {
-      showToast('Task updated successfully!', 'success');
-      await loadCronJobs(); // Reload the list
-    } else {
-      showToast(`Failed to update task: ${apiResult.error}`, 'error');
+    const result = await window.electronAPI.listAgents();
+    if (result.success && result.data && result.data.agents) {
+      agents = result.data.agents;
     }
   } catch (error) {
-    console.error('Failed to update cron job:', error);
-    showToast(`Error updating task: ${error.message}`, 'error');
-  } finally {
-    hideLoading();
+    console.error('Failed to load agents:', error);
   }
+
+  // Pre-fill values if editing
+  const defaultName = existingJob?.name || '';
+  const defaultDescription = existingJob?.description || '';
+  const defaultEnabled = existingJob?.enabled !== undefined ? existingJob.enabled : true;
+  const defaultAgentId = existingJob?.agentId || 'main';
+  const defaultSessionKey = existingJob?.sessionKey || '';
+  const defaultSessionTarget = existingJob?.sessionTarget || 'main';
+  const defaultWakeMode = existingJob?.wakeMode || 'next-heartbeat';
+  const defaultPayloadKind = existingJob?.payload?.kind || 'agentTurn';
+  const defaultMessage = existingJob?.payload?.message || existingJob?.payload?.text || '';
+  const defaultModel = existingJob?.payload?.model || '';
+  const defaultThinking = existingJob?.payload?.thinking || '';
+  const defaultTimeout = existingJob?.payload?.timeoutSeconds?.toString() || '';
+  const defaultFallbacks = existingJob?.payload?.fallbacks?.join(', ') || '';
+  const defaultLightContext = existingJob?.payload?.lightContext || false;
+  const defaultDeliver = existingJob?.payload?.deliver || false;
+  const defaultChannel = existingJob?.payload?.channel || '';
+  const defaultTo = existingJob?.payload?.to || '';
+  const defaultBestEffort = existingJob?.payload?.bestEffortDeliver || false;
+  const defaultAccountId = existingJob?.payload?.accountId || '';
+  const defaultDeleteAfterRun = existingJob?.deleteAfterRun || false;
+
+  // Build agents options
+  const agentsOptions = agents.map(agent =>
+    `<option value="${escapeHtml(agent.id)}">${escapeHtml(agent.label || agent.id)} (${escapeHtml(agent.id)})</option>`
+  ).join('');
+
+  elements.settingsCronJobsContent.innerHTML = `
+    <div class="cron-edit-form">
+      <div class="cron-edit-header">
+        <div>
+          <button class="cron-back-btn" id="cron-back-btn">← Back to List</button>
+          <h4 style="margin-top: 1rem;">${escapeHtml(title)}</h4>
+        </div>
+      </div>
+
+      <form id="cron-edit-form-element">
+        <div class="form-group">
+          <label class="form-label">Name</label>
+          <input type="text" name="name" class="input" value="${escapeHtml(defaultName)}" placeholder="Task name" required>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Description</label>
+          <textarea name="description" class="textarea" rows="2" placeholder="Optional description">${escapeHtml(defaultDescription)}</textarea>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">
+            <input type="checkbox" name="enabled" ${defaultEnabled ? 'checked' : ''} style="width: auto; margin-right: 0.5rem;">
+            Enabled
+          </label>
+        </div>
+
+        <div style="margin-bottom: 1.5rem; padding-bottom: 1.5rem; border-bottom: 2px solid hsl(var(--primary));">
+          <h5 style="font-size: 0.875rem; font-weight: 600; margin-bottom: 0.75rem;">Schedule Configuration</h5>
+
+          <div class="form-group">
+            <label class="form-label">Wake Mode</label>
+            <select name="wakeMode" class="select">
+              <option value="next-heartbeat" ${defaultWakeMode === 'next-heartbeat' ? 'selected' : ''}>Next Heartbeat</option>
+              <option value="immediate" ${defaultWakeMode === 'immediate' ? 'selected' : ''}>Immediate</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Session Key (optional)</label>
+            <input type="text" name="sessionKey" class="input" value="${escapeHtml(defaultSessionKey)}" placeholder="Leave empty for new session">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Session Target</label>
+            <input type="text" name="sessionTarget" class="input" value="${escapeHtml(defaultSessionTarget)}" placeholder="e.g., main">
+          </div>
+        </div>
+
+        <div style="margin-bottom: 1.5rem; padding-bottom: 1.5rem; border-bottom: 2px solid hsl(var(--primary));">
+          <h5 style="font-size: 0.875rem; font-weight: 600; margin-bottom: 0.75rem;">Agent Configuration</h5>
+
+          <div class="form-group">
+            <label class="form-label">Agent ID</label>
+            <select name="agentId" class="select" required>
+              ${agentsOptions}
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Payload Kind</label>
+            <select name="payloadKind" class="select" id="payloadKindSelect">
+              <option value="agentTurn" ${defaultPayloadKind === 'agentTurn' ? 'selected' : ''}>Agent Turn</option>
+              <option value="text" ${defaultPayloadKind === 'text' ? 'selected' : ''}>Text</option>
+            </select>
+          </div>
+        </div>
+
+        <div style="margin-bottom: 1.5rem; padding-bottom: 1.5rem; border-bottom: 2px solid hsl(var(--primary));">
+          <h5 style="font-size: 0.875rem; font-weight: 600; margin-bottom: 0.75rem;">Message Configuration</h5>
+
+          <div class="form-group">
+            <label class="form-label">Message</label>
+            <textarea name="message" class="textarea" rows="4" placeholder="Message content">${escapeHtml(defaultMessage)}</textarea>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Model (optional)</label>
+            <input type="text" name="model" class="input" value="${escapeHtml(defaultModel)}" placeholder="e.g., gpt-4">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Thinking (optional)</label>
+            <textarea name="thinking" class="textarea" rows="2" placeholder="Additional thinking context">${escapeHtml(defaultThinking)}</textarea>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Timeout (seconds, optional)</label>
+            <input type="number" name="timeout" class="input" value="${escapeHtml(defaultTimeout)}" placeholder="e.g., 60" min="1">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Fallbacks (comma-separated, optional)</label>
+            <input type="text" name="fallbacks" class="input" value="${escapeHtml(defaultFallbacks)}" placeholder="e.g., fallback1, fallback2">
+          </div>
+        </div>
+
+        <div style="margin-bottom: 1.5rem; padding-bottom: 1.5rem; border-bottom: 2px solid hsl(var(--primary));">
+          <h5 style="font-size: 0.875rem; font-weight: 600; margin-bottom: 0.75rem;">Advanced Options</h5>
+
+          <div class="form-group">
+            <label class="form-label">
+              <input type="checkbox" name="lightContext" ${defaultLightContext ? 'checked' : ''} style="width: auto; margin-right: 0.5rem;">
+              Light Context
+            </label>
+            <small style="display: block; margin-top: 0.25rem; font-size: 0.75rem; color: hsl(var(--muted-foreground));">Use minimal context for the task</small>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">
+              <input type="checkbox" name="deliver" ${defaultDeliver ? 'checked' : ''} style="width: auto; margin-right: 0.5rem;">
+              Deliver
+            </label>
+            <small style="display: block; margin-top: 0.25rem; font-size: 0.75rem; color: hsl(var(--muted-foreground));">Enable message delivery</small>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Channel (optional)</label>
+            <input type="text" name="channel" class="input" value="${escapeHtml(defaultChannel)}" placeholder="Delivery channel">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">To (optional)</label>
+            <input type="text" name="to" class="input" value="${escapeHtml(defaultTo)}" placeholder="Recipient">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">
+              <input type="checkbox" name="bestEffortDeliver" ${defaultBestEffort ? 'checked' : ''} style="width: auto; margin-right: 0.5rem;">
+              Best Effort Delivery
+            </label>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Account ID (optional)</label>
+            <input type="text" name="accountId" class="input" value="${escapeHtml(defaultAccountId)}" placeholder="Account ID for delivery">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">
+              <input type="checkbox" name="deleteAfterRun" ${defaultDeleteAfterRun ? 'checked' : ''} style="width: auto; margin-right: 0.5rem;">
+              Delete After Run
+            </label>
+            <small style="display: block; margin-top: 0.25rem; font-size: 0.75rem; color: hsl(var(--muted-foreground));">Automatically delete this task after execution</small>
+          </div>
+        </div>
+
+        <div class="cron-edit-actions">
+          <button type="button" class="btn btn-secondary" id="cron-cancel-btn">Cancel</button>
+          <button type="submit" class="btn btn-primary">${isEdit ? 'Update Task' : 'Add Task'}</button>
+        </div>
+      </form>
+    </div>
+  `;
+
+  // Add event listeners
+  document.getElementById('cron-back-btn').addEventListener('click', loadCronJobs);
+  document.getElementById('cron-cancel-btn').addEventListener('click', loadCronJobs);
+
+  document.getElementById('cron-edit-form-element').addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const formData = new FormData(e.target);
+    const job = {
+      name: formData.get('name').trim(),
+      description: formData.get('description').trim(),
+      enabled: formData.get('enabled') === 'on',
+      agentId: formData.get('agentId'),
+      sessionKey: formData.get('sessionKey').trim() || undefined,
+      sessionTarget: formData.get('sessionTarget').trim() || 'main',
+      wakeMode: formData.get('wakeMode'),
+      deleteAfterRun: formData.get('deleteAfterRun') === 'on',
+      payload: {
+        kind: formData.get('payloadKind'),
+        message: formData.get('message').trim(),
+        model: formData.get('model').trim() || undefined,
+        thinking: formData.get('thinking').trim() || undefined,
+        timeoutSeconds: formData.get('timeout') ? parseInt(formData.get('timeout')) : undefined,
+        fallbacks: formData.get('fallbacks').trim() ? formData.get('fallbacks').split(',').map(s => s.trim()) : undefined,
+        lightContext: formData.get('lightContext') === 'on',
+        deliver: formData.get('deliver') === 'on',
+        channel: formData.get('channel').trim() || undefined,
+        to: formData.get('to').trim() || undefined,
+        bestEffortDeliver: formData.get('bestEffortDeliver') === 'on',
+        accountId: formData.get('accountId').trim() || undefined
+      }
+    };
+
+    if (isEdit) {
+      job.id = existingJob.id;
+    }
+
+    showLoading(isEdit ? 'Updating scheduled task...' : 'Creating scheduled task...');
+
+    try {
+      let apiResult;
+      if (isEdit) {
+        const jobId = job.id;
+        const { id, ...patch } = job;
+        apiResult = await window.electronAPI.updateCronJob(jobId, patch);
+      } else {
+        apiResult = await window.electronAPI.addCronJob(job);
+      }
+
+      if (apiResult.success) {
+        showToast(isEdit ? 'Task updated successfully!' : 'Scheduled task created successfully!', 'success');
+        await loadCronJobs();
+      } else {
+        showToast(`Failed to ${isEdit ? 'update' : 'create'} task: ${apiResult.error}`, 'error');
+      }
+    } catch (error) {
+      console.error('Failed to save cron job:', error);
+      showToast(`Error ${isEdit ? 'updating' : 'creating'} task: ${error.message}`, 'error');
+    } finally {
+      hideLoading();
+    }
+  });
 }
 
 // Gateway Events
