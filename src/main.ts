@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, ipcMain, Menu } from 'electron';
 import * as path from 'path';
 import { GatewayClient } from './gateway-client';
 import { ConfigManager } from './config-manager';
@@ -54,10 +54,14 @@ function createWindow() {
     title: 'OpenClaw Desktop Client',
     // 确保更好的渲染质量
     show: false,
-    // 禁用透明度（透明窗口可能导致模糊）
-    transparent: false,
-    // 启用帧
-    frame: true,
+    // 自定义标题栏 - 隐藏默认标题栏
+    frame: false,
+    titleBarStyle: 'hidden',
+    // Windows上的自定义标题栏
+    ...(process.platform === 'win32' ? {
+      titleBarStyle: 'hidden',
+      backgroundColor: '#ffffff',
+    } : {}),
   });
 
   // 设置额外的渲染选项
@@ -272,8 +276,47 @@ ipcMain.handle('cron-run', async (event, params) => {
   }
 });
 
+// Window Controls
+ipcMain.handle('window-minimize', async () => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.minimize();
+  }
+});
+
+ipcMain.handle('window-maximize', async () => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.maximize();
+  }
+});
+
+ipcMain.handle('window-unmaximize', async () => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.unmaximize();
+  }
+});
+
+ipcMain.handle('window-close', async () => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    // Notify gateway before closing
+    if (gatewayClient) {
+      gatewayClient.disconnect();
+    }
+    mainWindow.close();
+  }
+});
+
+ipcMain.handle('window-is-maximized', async (): Promise<boolean> => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    return mainWindow.isMaximized();
+  }
+  return false;
+});
+
 // App lifecycle
 app.whenReady().then(() => {
+  // 隐藏菜单栏 (File, Edit, View, Window, Help)
+  Menu.setApplicationMenu(null);
+
   createWindow();
 });
 

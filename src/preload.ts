@@ -1,6 +1,13 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
 export interface ElectronAPI {
+  // Window Controls
+  minimizeWindow: () => Promise<void>;
+  maximizeWindow: () => Promise<void>;
+  unmaximizeWindow: () => Promise<void>;
+  closeWindow: () => Promise<void>;
+  isMaximized: () => Promise<boolean>;
+
   // Config
   getConfig: () => Promise<any>;
   saveConfig: (config: any) => Promise<boolean>;
@@ -40,9 +47,18 @@ export interface ElectronAPI {
 }
 
 const electronAPI: ElectronAPI = {
+  // Window Controls
+  minimizeWindow: () => ipcRenderer.invoke('window-minimize'),
+  maximizeWindow: () => ipcRenderer.invoke('window-maximize'),
+  unmaximizeWindow: () => ipcRenderer.invoke('window-unmaximize'),
+  closeWindow: () => ipcRenderer.invoke('window-close'),
+  isMaximized: () => ipcRenderer.invoke('window-is-maximized'),
+
+  // Config
   getConfig: () => ipcRenderer.invoke('get-config'),
   saveConfig: (config) => ipcRenderer.invoke('save-config', config),
 
+  // Gateway connection
   connectGateway: (config) => ipcRenderer.invoke('connect-gateway', config),
   disconnectGateway: () => ipcRenderer.invoke('disconnect-gateway'),
 

@@ -2,7 +2,6 @@
 const state = {
   connected: false,
   currentSessionKey: null,
-  currentView: 'chat',
   sessions: [],
   messages: [],
   cronJobs: [],
@@ -20,10 +19,14 @@ let elements = {};
 function initializeElements() {
   console.log('=== INITIALIZING DOM ELEMENTS ===');
   elements = {
-    // Navigation
-    navItems: document.querySelectorAll('.nav-item'),
-    sidebarViews: document.querySelectorAll('.sidebar-view'),
-    contentViews: document.querySelectorAll('.content-view'),
+    // Title Bar
+    minimizeBtn: document.getElementById('minimize-btn'),
+    maximizeBtn: document.getElementById('maximize-btn'),
+    closeBtn: document.getElementById('close-btn'),
+
+    // Layout
+    sidebar: document.getElementById('sidebar'),
+    resizer: document.getElementById('resizer'),
 
     // Connection
     connectionIndicator: document.getElementById('connection-indicator'),
@@ -31,34 +34,40 @@ function initializeElements() {
     // Chat
     newSessionBtn: document.getElementById('new-session-btn'),
     sessionsList: document.getElementById('sessions-list'),
-    allSessionsList: document.getElementById('all-sessions-list'),
     currentSessionTitle: document.getElementById('current-session-title'),
     sessionStatus: document.getElementById('session-status'),
     chatMessages: document.getElementById('chat-messages'),
     messageInput: document.getElementById('message-input'),
     sendBtn: document.getElementById('send-btn'),
 
-    // Config
-    configGatewayUrl: document.getElementById('config-gateway-url'),
-    configGatewayToken: document.getElementById('config-gateway-token'),
-    configGatewayPassword: document.getElementById('config-gateway-password'),
-    testConnectionBtn: document.getElementById('test-connection-btn'),
-    saveConfigBtn: document.getElementById('save-config-btn'),
-    configStatus: document.getElementById('config-status'),
+    // Settings dialog
+    settingsBtn: document.getElementById('settings-btn'),
+    settingsDialog: document.getElementById('settings-dialog'),
+    settingsCloseBtn: document.getElementById('settings-close-btn'),
+    settingsNavItems: document.querySelectorAll('.settings-nav-item'),
+    settingsContentViews: document.querySelectorAll('.settings-content-view'),
 
-    // Logs
-    logLevelFilter: document.getElementById('log-level-filter'),
-    logLimit: document.getElementById('log-limit'),
-    refreshLogsBtn: document.getElementById('refresh-logs-btn'),
-    clearLogsBtn: document.getElementById('clear-logs-btn'),
-    logsContent: document.getElementById('logs-content'),
+    // Settings - Sessions
+    settingsAllSessionsContent: document.getElementById('settings-all-sessions-content'),
 
-    // Sessions view
-    allSessionsContent: document.getElementById('all-sessions-content'),
+    // Settings - Cron
+    settingsAddCronBtn: document.getElementById('settings-add-cron-btn'),
+    settingsCronJobsContent: document.getElementById('settings-cron-jobs-content'),
 
-    // Cron view
-    addCronBtn: document.getElementById('add-cron-btn'),
-    cronJobsContent: document.getElementById('cron-jobs-content'),
+    // Settings - Config
+    settingsConfigGatewayUrl: document.getElementById('settings-config-gateway-url'),
+    settingsConfigGatewayToken: document.getElementById('settings-config-gateway-token'),
+    settingsConfigGatewayPassword: document.getElementById('settings-config-gateway-password'),
+    settingsTestConnectionBtn: document.getElementById('settings-test-connection-btn'),
+    settingsSaveConfigBtn: document.getElementById('settings-save-config-btn'),
+    settingsConfigStatus: document.getElementById('settings-config-status'),
+
+    // Settings - Logs
+    settingsLogLevelFilter: document.getElementById('settings-log-level-filter'),
+    settingsLogLimit: document.getElementById('settings-log-limit'),
+    settingsRefreshLogsBtn: document.getElementById('settings-refresh-logs-btn'),
+    settingsClearLogsBtn: document.getElementById('settings-clear-logs-btn'),
+    settingsLogsContent: document.getElementById('settings-logs-content'),
 
     // Loading
     loadingOverlay: document.getElementById('loading-overlay'),
@@ -165,38 +174,33 @@ function escapeHtml(text) {
   return div.innerHTML;
 }
 
-// Navigation
-function switchView(viewName) {
-  state.currentView = viewName;
+// Settings Dialog
+function openSettingsDialog(viewName = 'sessions') {
+  elements.settingsDialog.classList.remove('hidden');
+  switchSettingsView(viewName);
+}
 
+function closeSettingsDialog() {
+  elements.settingsDialog.classList.add('hidden');
+}
+
+function switchSettingsView(viewName) {
   // Update nav items
-  elements.navItems.forEach(item => {
-    if (item.dataset.view === viewName) {
+  elements.settingsNavItems.forEach(item => {
+    if (item.dataset.settingsView === viewName) {
       item.classList.add('active');
     } else {
       item.classList.remove('active');
     }
   });
 
-  // Update sidebar views
-  elements.sidebarViews.forEach(view => {
-    view.classList.add('hidden');
+  // Update content views - remove active class from all, add to target
+  elements.settingsContentViews.forEach(view => {
+    view.classList.remove('active');
   });
-  const chatSidebar = document.getElementById('chat-sidebar');
-  const sessionsSidebar = document.getElementById('sessions-sidebar');
-  if (viewName === 'chat') {
-    chatSidebar.classList.remove('hidden');
-  } else if (viewName === 'sessions') {
-    sessionsSidebar.classList.remove('hidden');
-  }
-
-  // Update content views
-  elements.contentViews.forEach(view => {
-    view.classList.add('hidden');
-  });
-  const contentView = document.getElementById(`${viewName}-view`);
+  const contentView = document.getElementById(`settings-${viewName}-view`);
   if (contentView) {
-    contentView.classList.remove('hidden');
+    contentView.classList.add('active');
   }
 
   // Load view-specific content
@@ -251,9 +255,9 @@ async function connectToGateway(config) {
 
 async function testConnection() {
   const config = {
-    url: elements.configGatewayUrl.value.trim(),
-    token: elements.configGatewayToken.value.trim(),
-    password: elements.configGatewayPassword.value.trim()
+    url: elements.settingsConfigGatewayUrl.value.trim(),
+    token: elements.settingsConfigGatewayToken.value.trim(),
+    password: elements.settingsConfigGatewayPassword.value.trim()
   };
 
   if (!config.url) {
@@ -308,8 +312,8 @@ async function testConnection() {
 }
 
 function showConfigStatus(message, type) {
-  elements.configStatus.textContent = message;
-  elements.configStatus.className = `status ${type}`;
+  elements.settingsConfigStatus.textContent = message;
+  elements.settingsConfigStatus.className = `status ${type}`;
 }
 
 async function saveConfig() {
@@ -338,9 +342,9 @@ async function saveConfig() {
 
 async function saveAndConnect() {
   const config = {
-    url: elements.configGatewayUrl.value.trim(),
-    token: elements.configGatewayToken.value.trim(),
-    password: elements.configGatewayPassword.value.trim()
+    url: elements.settingsConfigGatewayUrl.value.trim(),
+    token: elements.settingsConfigGatewayToken.value.trim(),
+    password: elements.settingsConfigGatewayPassword.value.trim()
   };
 
   if (!config.url) {
@@ -356,9 +360,8 @@ async function saveAndConnect() {
       config.password !== state.config.password;
 
     if (!configChanged) {
-      // Already connected with same config, just save and switch to chat
+      // Already connected with same config, just save
       await saveConfig();
-      switchView('chat');
       showToast('Already connected! Configuration saved.', 'success');
       return;
     }
@@ -375,18 +378,15 @@ async function saveAndConnect() {
   }
 
   // Connect
-  const success = await connectToGateway(config);
-  if (success) {
-    switchView('chat');
-  }
+  await connectToGateway(config);
 }
 
 function loadConfig() {
-  elements.configGatewayUrl.value = state.config.url || 'ws://localhost:18789';
-  elements.configGatewayToken.value = state.config.token || '';
-  elements.configGatewayPassword.value = state.config.password || '';
-  elements.configStatus.textContent = '';
-  elements.configStatus.className = 'status';
+  elements.settingsConfigGatewayUrl.value = state.config.url || 'ws://localhost:18789';
+  elements.settingsConfigGatewayToken.value = state.config.token || '';
+  elements.settingsConfigGatewayPassword.value = state.config.password || '';
+  elements.settingsConfigStatus.textContent = '';
+  elements.settingsConfigStatus.className = 'status';
 }
 
 // Sessions
@@ -425,19 +425,16 @@ async function loadSessions() {
 
 function renderSessionsList() {
   elements.sessionsList.innerHTML = '';
-  elements.allSessionsList.innerHTML = '';
 
   if (state.sessions.length === 0) {
     const emptyHtml = '<div class="empty-state"><h3>No sessions</h3><p>Create a new session to get started</p></div>';
     elements.sessionsList.innerHTML = emptyHtml;
-    elements.allSessionsList.innerHTML = emptyHtml;
     return;
   }
 
   state.sessions.forEach(session => {
-    const item = createSessionItem(session);
-    elements.sessionsList.appendChild(item.cloneNode(true));
-    elements.allSessionsList.appendChild(item);
+    const sidebarItem = createSessionItem(session);
+    elements.sessionsList.appendChild(sidebarItem);
   });
 }
 
@@ -512,11 +509,6 @@ async function selectSession(sessionKey) {
       elements.messageInput.removeAttribute('disabled');
     }
   }, 100);
-
-  // Switch to chat view
-  if (state.currentView !== 'chat') {
-    switchView('chat');
-  }
 }
 
 async function createNewSession() {
@@ -526,7 +518,7 @@ async function createNewSession() {
   if (!state.connected) {
     console.log('Not connected, showing error');
     showToast('Not connected to gateway. Please configure and connect first.', 'error');
-    switchView('config');
+    openSettingsDialog('config');
     return;
   }
 
@@ -567,20 +559,22 @@ async function createNewSession() {
 
 async function loadAllSessions() {
   if (!state.connected) {
-    elements.allSessionsContent.innerHTML = '<div class="empty-state"><h3>Not connected to Gateway</h3><p>Please go to <strong>Config</strong> to set up your connection first</p></div>';
+    elements.settingsAllSessionsContent.innerHTML = '<div class="empty-state"><h3>Not connected to Gateway</h3><p>Please go to <strong>Config</strong> to set up your connection first</p></div>';
     return;
   }
 
   if (state.sessions.length === 0) {
-    elements.allSessionsContent.innerHTML = '<div class="empty-state"><h3>No sessions</h3><p>Create a new session to get started</p></div>';
+    elements.settingsAllSessionsContent.innerHTML = '<div class="empty-state"><h3>No sessions</h3><p>Create a new session to get started</p></div>';
     return;
   }
 
-  elements.allSessionsContent.innerHTML = '';
+  elements.settingsAllSessionsContent.innerHTML = '';
 
   for (const session of state.sessions) {
     const detail = document.createElement('div');
     detail.className = 'session-detail';
+    detail.style.cursor = 'pointer';
+    detail.title = 'Click to open this chat';
 
     const title = session.label || session.key;
     const createdAt = session.createdAt ? formatDate(session.createdAt) : 'Unknown';
@@ -592,7 +586,7 @@ async function loadAllSessions() {
           <div class="session-detail-title">${escapeHtml(title)}</div>
           <div class="session-detail-key">${escapeHtml(session.key)}</div>
         </div>
-        <button class="btn btn-small btn-primary" data-session-key="${session.key}">Open Chat</button>
+        <div class="session-detail-arrow">→</div>
       </div>
       <div class="session-detail-info">
         <span>Created: ${createdAt}</span>
@@ -601,10 +595,14 @@ async function loadAllSessions() {
       </div>
     `;
 
-    const openBtn = detail.querySelector('[data-session-key]');
-    openBtn.addEventListener('click', () => selectSession(session.key));
+    // Make the entire card clickable
+    detail.addEventListener('click', (e) => {
+      console.log('Session card clicked:', session.key);
+      selectSession(session.key);
+      closeSettingsDialog(); // Close settings dialog after selecting a session
+    });
 
-    elements.allSessionsContent.appendChild(detail);
+    elements.settingsAllSessionsContent.appendChild(detail);
   }
 }
 
@@ -701,23 +699,23 @@ async function sendMessage() {
 
 // Logs
 async function loadLogs() {
-  const level = elements.logLevelFilter.value || undefined;
-  const limit = parseInt(elements.logLimit.value) || 500;
+  const level = elements.settingsLogLevelFilter.value || undefined;
+  const limit = parseInt(elements.settingsLogLimit.value) || 500;
 
   try {
     const logs = await window.electronAPI.getLogs({ level, limit });
     renderLogs(logs);
   } catch (error) {
     console.error('Failed to load logs:', error);
-    elements.logsContent.innerHTML = `<div class="empty-state"><h3>Error</h3><p>${escapeHtml(error.message)}</p></div>`;
+    elements.settingsLogsContent.innerHTML = `<div class="empty-state"><h3>Error</h3><p>${escapeHtml(error.message)}</p></div>`;
   }
 }
 
 function renderLogs(logs) {
-  elements.logsContent.innerHTML = '';
+  elements.settingsLogsContent.innerHTML = '';
 
   if (!logs || logs.length === 0) {
-    elements.logsContent.innerHTML = '<div class="empty-state"><h3>No logs</h3></div>';
+    elements.settingsLogsContent.innerHTML = '<div class="empty-state"><h3>No logs</h3></div>';
     return;
   }
 
@@ -725,11 +723,11 @@ function renderLogs(logs) {
     const div = document.createElement('div');
     div.className = `log-entry ${log.level}`;
     div.textContent = `[${log.timestamp}] [${log.level.toUpperCase()}] [${log.source}] ${log.message}`;
-    elements.logsContent.appendChild(div);
+    elements.settingsLogsContent.appendChild(div);
   });
 
   // Scroll to bottom
-  elements.logsContent.scrollTop = elements.logsContent.scrollHeight;
+  elements.settingsLogsContent.scrollTop = elements.settingsLogsContent.scrollHeight;
 }
 
 async function clearLogs() {
@@ -747,7 +745,7 @@ async function clearLogs() {
 // Cron Jobs
 async function loadCronJobs() {
   if (!state.connected) {
-    elements.cronJobsContent.innerHTML = '<div class="empty-state"><h3>Not connected to Gateway</h3><p>Please go to <strong>Config</strong> to set up your connection first</p></div>';
+    elements.settingsCronJobsContent.innerHTML = '<div class="empty-state"><h3>Not connected to Gateway</h3><p>Please go to <strong>Config</strong> to set up your connection first</p></div>';
     return;
   }
 
@@ -771,17 +769,17 @@ async function loadCronJobs() {
   } catch (error) {
     console.error('Failed to load cron jobs:', error);
     showToast(`Error loading cron jobs: ${error.message}`, 'error');
-    elements.cronJobsContent.innerHTML = `<div class="empty-state"><h3>Error</h3><p>${escapeHtml(error.message)}</p></div>`;
+    elements.settingsCronJobsContent.innerHTML = `<div class="empty-state"><h3>Error</h3><p>${escapeHtml(error.message)}</p></div>`;
   } finally {
     hideLoading();
   }
 }
 
 function renderCronJobsList() {
-  elements.cronJobsContent.innerHTML = '';
+  elements.settingsCronJobsContent.innerHTML = '';
 
   if (state.cronJobs.length === 0) {
-    elements.cronJobsContent.innerHTML = `
+    elements.settingsCronJobsContent.innerHTML = `
       <div class="empty-state">
         <h3>No scheduled tasks</h3>
         <p>Click the <strong>+ Add Task</strong> button to create your first scheduled task</p>
@@ -833,7 +831,7 @@ function renderCronJobsList() {
     table.appendChild(row);
   });
 
-  elements.cronJobsContent.appendChild(table);
+  elements.settingsCronJobsContent.appendChild(table);
 
   // Add event listeners for action buttons
   table.querySelectorAll('.cron-run-btn').forEach(btn => {
@@ -1573,7 +1571,7 @@ async function showAddCronJobDialog(existingJob = null) {
 async function addCronJob() {
   if (!state.connected) {
     showToast('Not connected to gateway. Please configure and connect first.', 'error');
-    switchView('config');
+    openSettingsDialog('config');
     return;
   }
 
@@ -1699,11 +1697,47 @@ function setupGatewayEventListeners() {
 function setupEventListeners() {
   console.log('Setting up event listeners...');
 
-  // Navigation
-  elements.navItems.forEach(item => {
+  // Title bar controls
+  elements.minimizeBtn.addEventListener('click', async () => {
+    try {
+      await window.electronAPI.minimizeWindow();
+    } catch (error) {
+      console.error('Failed to minimize window:', error);
+    }
+  });
+
+  elements.maximizeBtn.addEventListener('click', async () => {
+    try {
+      const isMaximized = await window.electronAPI.isMaximized();
+      if (isMaximized) {
+        await window.electronAPI.unmaximizeWindow();
+        updateMaximizeButton(false);
+      } else {
+        await window.electronAPI.maximizeWindow();
+        updateMaximizeButton(true);
+      }
+    } catch (error) {
+      console.error('Failed to toggle maximize:', error);
+    }
+  });
+
+  elements.closeBtn.addEventListener('click', async () => {
+    try {
+      await window.electronAPI.closeWindow();
+    } catch (error) {
+      console.error('Failed to close window:', error);
+    }
+  });
+
+  // Settings dialog
+  elements.settingsBtn.addEventListener('click', () => openSettingsDialog());
+  elements.settingsCloseBtn.addEventListener('click', closeSettingsDialog);
+
+  // Settings navigation
+  elements.settingsNavItems.forEach(item => {
     item.addEventListener('click', () => {
-      const view = item.dataset.view;
-      switchView(view);
+      const view = item.dataset.settingsView;
+      switchSettingsView(view);
     });
   });
 
@@ -1736,17 +1770,140 @@ function setupEventListeners() {
     elements.sendBtn.disabled = !hasContent || !hasSession;
   });
 
-  // Config
-  elements.testConnectionBtn.addEventListener('click', testConnection);
-  elements.saveConfigBtn.addEventListener('click', saveAndConnect);
+  // Settings - Config
+  elements.settingsTestConnectionBtn.addEventListener('click', testConnection);
+  elements.settingsSaveConfigBtn.addEventListener('click', saveAndConnect);
 
-  // Logs
-  elements.refreshLogsBtn.addEventListener('click', loadLogs);
-  elements.clearLogsBtn.addEventListener('click', clearLogs);
-  elements.logLevelFilter.addEventListener('change', loadLogs);
+  // Settings - Logs
+  elements.settingsRefreshLogsBtn.addEventListener('click', loadLogs);
+  elements.settingsClearLogsBtn.addEventListener('click', clearLogs);
+  elements.settingsLogLevelFilter.addEventListener('change', loadLogs);
 
-  // Cron
-  elements.addCronBtn.addEventListener('click', addCronJob);
+  // Settings - Cron
+  elements.settingsAddCronBtn.addEventListener('click', addCronJob);
+
+  // Close settings dialog when clicking outside
+  elements.settingsDialog.addEventListener('click', (e) => {
+    if (e.target === elements.settingsDialog) {
+      closeSettingsDialog();
+    }
+  });
+
+  // Resizer - Sidebar width adjustment
+  setupResizer();
+}
+
+// Resizer functionality
+function setupResizer() {
+  const resizer = elements.resizer;
+  const sidebar = elements.sidebar;
+
+  if (!resizer || !sidebar) {
+    console.error('Resizer or sidebar element not found');
+    return;
+  }
+
+  let isResizing = false;
+  let startX = 0;
+  let startWidth = 0;
+  let widthTooltip = null;
+
+  // Load saved sidebar width
+  const savedWidth = localStorage.getItem('sidebarWidth');
+  if (savedWidth) {
+    const width = parseInt(savedWidth);
+    if (width >= 200 && width <= 800) {
+      sidebar.style.width = width + 'px';
+    }
+  }
+
+  // Create width tooltip
+  function createWidthTooltip() {
+    if (widthTooltip) return;
+    widthTooltip = document.createElement('div');
+    widthTooltip.className = 'width-tooltip';
+    document.body.appendChild(widthTooltip);
+  }
+
+  function updateWidthTooltip(x, y, width) {
+    if (!widthTooltip) return;
+    widthTooltip.textContent = `${width}px`;
+    widthTooltip.style.left = `${x + 15}px`;
+    widthTooltip.style.top = `${y + 15}px`;
+  }
+
+  function removeWidthTooltip() {
+    if (widthTooltip) {
+      widthTooltip.remove();
+      widthTooltip = null;
+    }
+  }
+
+  resizer.addEventListener('mousedown', (e) => {
+    isResizing = true;
+    startX = e.clientX;
+    startWidth = sidebar.offsetWidth;
+
+    sidebar.classList.add('resizing');
+    resizer.classList.add('resizing');
+
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+
+    createWidthTooltip();
+
+    e.preventDefault();
+  });
+
+  document.addEventListener('mousemove', (e) => {
+    if (!isResizing) return;
+
+    const deltaX = e.clientX - startX;
+    const newWidth = startWidth + deltaX;
+
+    // Constrain width between min and max
+    const minWidth = 200;
+    const maxWidth = 800;
+    const constrainedWidth = Math.max(minWidth, Math.min(maxWidth, newWidth));
+
+    sidebar.style.width = constrainedWidth + 'px';
+
+    // Update tooltip
+    updateWidthTooltip(e.clientX, e.clientY, constrainedWidth);
+
+    e.preventDefault();
+  });
+
+  document.addEventListener('mouseup', (e) => {
+    if (!isResizing) return;
+
+    isResizing = false;
+    sidebar.classList.remove('resizing');
+    resizer.classList.remove('resizing');
+
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+
+    removeWidthTooltip();
+
+    // Save the new width
+    const finalWidth = sidebar.offsetWidth;
+    localStorage.setItem('sidebarWidth', finalWidth.toString());
+  });
+}
+
+// Update maximize/restore button
+function updateMaximizeButton(isMaximized) {
+  const maximizeBtn = elements.maximizeBtn;
+  if (!maximizeBtn) return;
+
+  if (isMaximized) {
+    maximizeBtn.innerHTML = '<span>❐</span>';
+    maximizeBtn.title = '还原';
+  } else {
+    maximizeBtn.innerHTML = '<span>□</span>';
+    maximizeBtn.title = '最大化';
+  }
 }
 
 // Initialize

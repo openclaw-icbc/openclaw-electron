@@ -13,49 +13,41 @@
 </head>
 <body>
     <div id="app">
+        <!-- Custom Title Bar -->
+        <div class="title-bar">
+            <div class="title-bar-drag-region">
+                <div class="title-bar-title">OpenClaw Desktop Client</div>
+            </div>
+            <div class="title-bar-controls">
+                <button class="title-bar-button minimize-btn" id="minimize-btn" title="最小化">
+                    <span>─</span>
+                </button>
+                <button class="title-bar-button maximize-btn" id="maximize-btn" title="最大化">
+                    <span>□</span>
+                </button>
+                <button class="title-bar-button close-btn" id="close-btn" title="关闭">
+                    <span>✕</span>
+                </button>
+            </div>
+        </div>
+
         <!-- Main App Panel - WeChat Style Layout -->
         <div id="app-panel" class="panel">
             <div class="app-layout">
                 <!-- Sidebar -->
-                <div class="sidebar">
+                <div class="sidebar" id="sidebar">
+                    <!-- Resizer handle -->
+                    <div class="resizer" id="resizer" title="Drag to resize"></div>
                     <div class="sidebar-header">
                         <h2>OpenClaw</h2>
                         <div id="connection-indicator" class="connection-indicator offline"></div>
                     </div>
-
-                    <nav class="sidebar-nav">
-                        <div class="nav-item active" data-view="chat">
-                            <span class="nav-icon">💬</span>
-                            <span class="nav-text">Chat</span>
-                        </div>
-                        <div class="nav-item" data-view="sessions">
-                            <span class="nav-icon">📋</span>
-                            <span class="nav-text">Sessions</span>
-                        </div>
-                        <div class="nav-item" data-view="cron">
-                            <span class="nav-icon">⏰</span>
-                            <span class="nav-text">Cron</span>
-                        </div>
-                        <div class="nav-item" data-view="config">
-                            <span class="nav-icon">⚙️</span>
-                            <span class="nav-text">Config</span>
-                        </div>
-                        <div class="nav-item" data-view="logs">
-                            <span class="nav-icon">📝</span>
-                            <span class="nav-text">Logs</span>
-                        </div>
-                    </nav>
 
                     <div class="sidebar-content">
                         <!-- Chat View Sidebar -->
                         <div id="chat-sidebar" class="sidebar-view active">
                             <button id="new-session-btn" class="btn-new-session">+ New Chat</button>
                             <div id="sessions-list" class="sessions-list"></div>
-                        </div>
-
-                        <!-- Sessions View Sidebar -->
-                        <div id="sessions-sidebar" class="sidebar-view hidden">
-                            <div id="all-sessions-list" class="sessions-list"></div>
                         </div>
                     </div>
                 </div>
@@ -66,14 +58,18 @@
                     <div id="chat-view" class="content-view active">
                         <div class="chat-header">
                             <h3 id="current-session-title">Select or create a chat</h3>
-                            <div id="session-status" class="status-small"></div>
+                            <div class="header-actions">
+                                <div id="session-status" class="status-small"></div>
+                                <button id="settings-btn" class="settings-btn" title="Settings">⚙️</button>
+                            </div>
                         </div>
                         <div id="chat-messages" class="chat-messages">
                             <div class="empty-state">
                                 <h3>欢迎使用 OpenClaw Desktop Client</h3>
                                 <p>开始使用：</p>
                                 <ol style="text-align: left; max-width: 400px; margin: 20px auto;">
-                                    <li>点击左侧边栏的 <strong>⚙️ Config</strong></li>
+                                    <li>点击右上角的 <strong>⚙️</strong> 设置按钮</li>
+                                    <li>在设置中选择 <strong>Config</strong></li>
                                     <li>配置你的 Gateway URL 和 token</li>
                                     <li>点击 <strong>Save & Connect</strong></li>
                                     <li>在左侧选择一个会话或点击 <strong>+ New Chat</strong> 创建新会话</li>
@@ -82,76 +78,102 @@
                             </div>
                         </div>
                         <div class="chat-input-area">
-                            <textarea id="message-input" placeholder="请先在左侧选择或创建一个会话 (Ctrl+Enter 发送)" rows="3" disabled></textarea>
+                            <textarea id="message-input" placeholder="选择或创建一个会话后开始聊天 (Ctrl+Enter 发送)" rows="3" disabled></textarea>
                             <div class="input-actions">
                                 <button id="send-btn" class="btn btn-primary" disabled>发送</button>
                             </div>
                         </div>
                     </div>
 
-                    <!-- Config View -->
-                    <div id="config-view" class="content-view hidden">
-                        <div class="view-header">
-                            <h2>Configuration</h2>
-                        </div>
-                        <div class="config-content">
-                            <div class="form-group">
-                                <label for="config-gateway-url">Gateway URL</label>
-                                <input type="text" id="config-gateway-url" value="ws://localhost:18789" placeholder="ws://localhost:18789">
-                            </div>
-                            <div class="form-group">
-                                <label for="config-gateway-token">Gateway Token (optional)</label>
-                                <input type="password" id="config-gateway-token" placeholder="Enter gateway token">
-                            </div>
-                            <div class="form-group">
-                                <label for="config-gateway-password">Gateway Password (optional)</label>
-                                <input type="password" id="config-gateway-password" placeholder="Enter gateway password">
-                            </div>
-                            <div class="button-group">
-                                <button id="test-connection-btn" class="btn btn-secondary">Test Connection</button>
-                                <button id="save-config-btn" class="btn btn-primary">Save & Connect</button>
-                            </div>
-                            <div id="config-status" class="status"></div>
-                        </div>
-                    </div>
+                </div>
+            </div>
+        </div>
 
-                    <!-- Logs View -->
-                    <div id="logs-view" class="content-view hidden">
-                        <div class="view-header">
-                            <h2>Client Logs</h2>
+        <!-- Settings Menu Dialog -->
+        <div id="settings-dialog" class="settings-dialog-overlay hidden">
+            <div class="settings-dialog">
+                <div class="settings-dialog-header">
+                    <h3>Settings</h3>
+                    <button id="settings-close-btn" class="settings-close-btn">×</button>
+                </div>
+                <div class="settings-dialog-body">
+                    <nav class="settings-nav">
+                        <div class="settings-nav-item active" data-settings-view="sessions">
+                            <span class="settings-nav-icon">📋</span>
+                            <span class="settings-nav-text">Sessions</span>
                         </div>
-                        <div class="logs-content-wrapper">
-                            <div class="logs-controls">
-                                <select id="log-level-filter">
-                                    <option value="">All Levels</option>
-                                    <option value="info">Info</option>
-                                    <option value="warn">Warning</option>
-                                    <option value="error">Error</option>
-                                    <option value="debug">Debug</option>
-                                </select>
-                                <input type="number" id="log-limit" value="500" min="10" max="5000">
-                                <button id="refresh-logs-btn" class="btn btn-small">Refresh</button>
-                                <button id="clear-logs-btn" class="btn btn-small">Clear Logs</button>
+                        <div class="settings-nav-item" data-settings-view="cron">
+                            <span class="settings-nav-icon">⏰</span>
+                            <span class="settings-nav-text">Cron</span>
+                        </div>
+                        <div class="settings-nav-item" data-settings-view="config">
+                            <span class="settings-nav-icon">⚙️</span>
+                            <span class="settings-nav-text">Config</span>
+                        </div>
+                        <div class="settings-nav-item" data-settings-view="logs">
+                            <span class="settings-nav-icon">📝</span>
+                            <span class="settings-nav-text">Logs</span>
+                        </div>
+                    </nav>
+                    <div class="settings-content">
+                        <!-- Sessions Settings View -->
+                        <div id="settings-sessions-view" class="settings-content-view active">
+                            <h4>All Sessions</h4>
+                            <div id="settings-all-sessions-content" class="settings-sessions-content"></div>
+                        </div>
+
+                        <!-- Cron Settings View -->
+                        <div id="settings-cron-view" class="settings-content-view">
+                            <div class="settings-view-header">
+                                <h4>Scheduled Tasks</h4>
+                                <button id="settings-add-cron-btn" class="btn btn-primary btn-small">+ Add Task</button>
                             </div>
-                            <pre id="logs-content" class="logs-content"></pre>
+                            <div id="settings-cron-jobs-content" class="settings-cron-jobs-content"></div>
                         </div>
-                    </div>
 
-                    <!-- Sessions Detail View -->
-                    <div id="sessions-view" class="content-view hidden">
-                        <div class="view-header">
-                            <h2>All Sessions</h2>
+                        <!-- Config Settings View -->
+                        <div id="settings-config-view" class="settings-content-view">
+                            <h4>Configuration</h4>
+                            <div class="config-content">
+                                <div class="form-group">
+                                    <label for="settings-config-gateway-url">Gateway URL</label>
+                                    <input type="text" id="settings-config-gateway-url" value="ws://localhost:18789" placeholder="ws://localhost:18789">
+                                </div>
+                                <div class="form-group">
+                                    <label for="settings-config-gateway-token">Gateway Token (optional)</label>
+                                    <input type="password" id="settings-config-gateway-token" placeholder="Enter gateway token">
+                                </div>
+                                <div class="form-group">
+                                    <label for="settings-config-gateway-password">Gateway Password (optional)</label>
+                                    <input type="password" id="settings-config-gateway-password" placeholder="Enter gateway password">
+                                </div>
+                                <div class="button-group">
+                                    <button id="settings-test-connection-btn" class="btn btn-secondary">Test Connection</button>
+                                    <button id="settings-save-config-btn" class="btn btn-primary">Save & Connect</button>
+                                </div>
+                                <div id="settings-config-status" class="status"></div>
+                            </div>
                         </div>
-                        <div id="all-sessions-content" class="sessions-content"></div>
-                    </div>
 
-                    <!-- Cron Jobs View -->
-                    <div id="cron-view" class="content-view hidden">
-                        <div class="view-header">
-                            <h2>Scheduled Tasks</h2>
-                            <button id="add-cron-btn" class="btn btn-primary">+ Add Task</button>
+                        <!-- Logs Settings View -->
+                        <div id="settings-logs-view" class="settings-content-view">
+                            <h4>Client Logs</h4>
+                            <div class="logs-content-wrapper">
+                                <div class="logs-controls">
+                                    <select id="settings-log-level-filter">
+                                        <option value="">All Levels</option>
+                                        <option value="info">Info</option>
+                                        <option value="warn">Warning</option>
+                                        <option value="error">Error</option>
+                                        <option value="debug">Debug</option>
+                                    </select>
+                                    <input type="number" id="settings-log-limit" value="500" min="10" max="5000">
+                                    <button id="settings-refresh-logs-btn" class="btn btn-small">Refresh</button>
+                                    <button id="settings-clear-logs-btn" class="btn btn-small">Clear Logs</button>
+                                </div>
+                                <pre id="settings-logs-content" class="logs-content"></pre>
+                            </div>
                         </div>
-                        <div id="cron-jobs-content" class="cron-jobs-content"></div>
                     </div>
                 </div>
             </div>
