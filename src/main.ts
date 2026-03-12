@@ -44,15 +44,15 @@ if (process.platform === 'linux') {
   // 使用系统字体配置
   app.commandLine.appendSwitch('font-render-hinting', 'slight');
 
-  // 强制设置默认字体族（解决中文方块问题）
-  app.commandLine.appendSwitch('default-font-family', 'Noto Sans CJK SC,WenQuanYi Micro Hei,Noto Sans SC,sans-serif');
-  app.commandLine.appendSwitch('default-font-family-standard', 'Noto Sans CJK SC,WenQuanYi Micro Hei,Noto Sans SC,sans-serif');
-  app.commandLine.appendSwitch('default-font-family-sans-serif', 'Noto Sans CJK SC,WenQuanYi Micro Hei,Noto Sans SC,sans-serif');
-  app.commandLine.appendSwitch('default-font-family-serif', 'Noto Serif CJK SC,Source Han Serif CN,serif');
-  app.commandLine.appendSwitch('default-font-family-monospace', 'Noto Sans Mono CJK SC,WenQuanYi Micro Hei Mono,monospace');
+  // 强制设置默认字体族（使用微软雅黑作为优先字体）
+  app.commandLine.appendSwitch('default-font-family', 'Microsoft YaHei,微软雅黑,Noto Sans CJK SC,WenQuanYi Micro Hei,Noto Sans SC,sans-serif');
+  app.commandLine.appendSwitch('default-font-family-standard', 'Microsoft YaHei,微软雅黑,Noto Sans CJK SC,WenQuanYi Micro Hei,Noto Sans SC,sans-serif');
+  app.commandLine.appendSwitch('default-font-family-sans-serif', 'Microsoft YaHei,微软雅黑,Noto Sans CJK SC,WenQuanYi Micro Hei,Noto Sans SC,sans-serif');
+  app.commandLine.appendSwitch('default-font-family-serif', 'Microsoft YaHei,微软雅黑,Noto Serif CJK SC,Source Han Serif CN,serif');
+  app.commandLine.appendSwitch('default-font-family-monospace', 'Microsoft YaHei,微软雅黑,Noto Sans Mono CJK SC,WenQuanYi Micro Hei Mono,monospace');
 
   console.log('  ✓ Linux字体渲染优化已应用');
-  console.log('  ✓ 默认字体族已设置为中文字体\n');
+  console.log('  ✓ 默认字体族已设置为微软雅黑\n');
 }
 
 let mainWindow: BrowserWindow | null = null;
@@ -118,30 +118,33 @@ function createWindow() {
         document.characterSet = 'UTF-8';
       }
 
-      // 强制注入中文字体样式（解决WSL/Linux中文方块问题）
+      // 强制注入微软雅黑字体样式
       const style = document.createElement('style');
       style.textContent = \`
         @font-face {
           font-family: 'ChineseFont';
-          src: local('Noto Sans CJK SC'), local('WenQuanYi Micro Hei'),
+          src: local('Microsoft YaHei'), local('微软雅黑'),
+               local('Noto Sans CJK SC'), local('WenQuanYi Micro Hei'),
                local('Noto Sans SC'), local('Source Han Sans CN'),
-               local('Microsoft YaHei'), local('PingFang SC');
+               local('PingFang SC');
           font-display: swap;
         }
         * {
-          font-family: 'ChineseFont', 'Noto Sans CJK SC', 'WenQuanYi Micro Hei',
-                       'Noto Sans SC', 'Microsoft YaHei', 'PingFang SC',
+          font-family: 'ChineseFont', 'Microsoft YaHei', '微软雅黑',
+                       'Noto Sans CJK SC', 'WenQuanYi Micro Hei',
+                       'Noto Sans SC', 'PingFang SC',
                        -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
                        sans-serif !important;
         }
         code, pre, .font-mono {
-          font-family: 'Noto Sans Mono CJK SC', 'WenQuanYi Zen Hei Mono',
+          font-family: 'Microsoft YaHei', '微软雅黑', 'Noto Sans Mono CJK SC',
+                       'WenQuanYi Zen Hei Mono',
                        ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
                        monospace !important;
         }
       \`;
       document.head.appendChild(style);
-      console.log('[Electron] 中文字体样式已注入');
+      console.log('[Electron] 微软雅黑字体样式已注入');
     `).catch(() => {});
   });
 
