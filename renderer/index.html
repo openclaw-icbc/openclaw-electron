@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
-    <title>OpenClaw Desktop Client</title>
+    <title>OpenClaw 桌面客户端</title>
     <!-- Load Noto Sans SC font for Chinese character support -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -46,12 +46,18 @@
                     <div class="flex-1 overflow-y-auto overflow-x-hidden flex flex-col min-w-0">
                         <!-- Chat View Sidebar -->
                         <div id="chat-sidebar" class="flex-1 flex flex-col min-w-0 overflow-hidden">
-                            <button id="new-session-btn" class="btn btn-primary m-2.5">+ New Chat</button>
-                            <div class="sessions-header px-3 py-2 flex items-center justify-between cursor-pointer hover:bg-muted/50 transition-colors" id="sessions-toggle-btn">
-                                <span class="text-sm font-medium text-foreground">Sessions</span>
-                                <span id="sessions-toggle-icon" class="text-xs text-muted-foreground transition-transform duration-200">▼</span>
+                            <button id="new-session-btn" class="btn btn-primary m-2.5">+ 新建对话</button>
+                            <div class="sessions-header flex items-center justify-between cursor-pointer" id="sessions-toggle-btn">
+                                <div class="flex items-center gap-2">
+                                    <span class="sessions-header-icon">💬</span>
+                                    <span class="text-sm font-semibold">历史对话</span>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <span class="sessions-count text-xs text-muted-foreground">0</span>
+                                    <span id="sessions-toggle-icon">▼</span>
+                                </div>
                             </div>
-                            <div id="sessions-list" class="flex-1 overflow-y-auto overflow-x-hidden py-1.5 w-full custom-scrollbar transition-all duration-300"></div>
+                            <div id="sessions-list" class="flex-1 overflow-y-auto overflow-x-hidden py-1 w-full custom-scrollbar transition-all duration-300"></div>
                         </div>
                     </div>
                 </div>
@@ -61,10 +67,10 @@
                     <!-- Chat View -->
                     <div id="chat-view" class="flex-1 flex flex-col overflow-hidden">
                         <div class="px-5 py-4 bg-background border-b border-border flex justify-between items-center">
-                            <h3 id="current-session-title" class="text-base font-semibold">Select or create a chat</h3>
+                            <h3 id="current-session-title" class="text-base font-semibold">选择或创建一个对话</h3>
                             <div class="flex items-center gap-4">
                                 <div id="session-status" class="text-xs text-muted-foreground"></div>
-                                <button id="settings-btn" class="bg-none border-none text-2xl cursor-pointer p-2 rounded-md transition-colors hover:bg-muted flex items-center justify-center" title="Settings">⚙️</button>
+                                <button id="settings-btn" class="bg-none border-none text-2xl cursor-pointer p-2 rounded-md transition-colors hover:bg-muted flex items-center justify-center" title="设置">⚙️</button>
                             </div>
                         </div>
                         <div id="chat-messages" class="flex-1 overflow-y-auto p-5 bg-background custom-scrollbar">
@@ -76,15 +82,15 @@
                                     <li>在设置中选择 <strong>Config</strong></li>
                                     <li>配置你的 Gateway URL 和 token</li>
                                     <li>点击 <strong>Save & Connect</strong></li>
-                                    <li>在左侧选择一个会话或点击 <strong>+ New Chat</strong> 创建新会话</li>
+                                    <li>在左侧选择一个会话或点击 <strong>+ 新建对话</strong> 创建新会话</li>
                                     <li>开始聊天！</li>
                                 </ol>
                             </div>
                         </div>
                         <div class="px-5 py-4 bg-background border-t border-border">
-                            <textarea id="message-input" class="textarea mb-2.5" placeholder="选择或创建一个会话后开始聊天 (Ctrl+Enter 发送)" rows="3" disabled></textarea>
-                            <div class="flex justify-end gap-2.5">
-                                <button id="send-btn" class="btn btn-primary" disabled>发送</button>
+                            <div class="relative">
+                                <textarea id="message-input" class="textarea pr-16" placeholder="选择或创建一个会话后开始聊天 (Ctrl+Enter 发送)" rows="3" disabled></textarea>
+                                <button id="send-btn" class="btn btn-primary absolute bottom-3 right-3" disabled>发送</button>
                             </div>
                         </div>
                     </div>
@@ -97,62 +103,62 @@
         <div id="settings-dialog" class="dialog-overlay hidden">
             <div class="dialog">
                 <div class="dialog-header">
-                    <h3 class="dialog-title">Settings</h3>
+                    <h3 class="dialog-title">设置</h3>
                     <button id="settings-close-btn" class="dialog-close-btn">×</button>
                 </div>
                 <nav class="dialog-nav">
                         <div class="tabs-trigger active" data-settings-view="sessions">
                             <span class="text-base">📋</span>
-                            <span class="text-sm font-medium">Sessions</span>
+                            <span class="text-sm font-medium">对话列表</span>
                         </div>
                         <div class="tabs-trigger" data-settings-view="cron">
                             <span class="text-base">⏰</span>
-                            <span class="text-sm font-medium">Cron</span>
+                            <span class="text-sm font-medium">定时任务</span>
                         </div>
                         <div class="tabs-trigger" data-settings-view="config">
                             <span class="text-base">⚙️</span>
-                            <span class="text-sm font-medium">Config</span>
+                            <span class="text-sm font-medium">配置</span>
                         </div>
                         <div class="tabs-trigger" data-settings-view="logs">
                             <span class="text-base">📝</span>
-                            <span class="text-sm font-medium">Logs</span>
+                            <span class="text-sm font-medium">日志</span>
                         </div>
                     </nav>
                     <div class="dialog-content custom-scrollbar">
                         <!-- Sessions Settings View -->
                         <div id="settings-sessions-view" class="settings-content-view active">
-                            <h4 class="text-base font-semibold mb-4">All Sessions</h4>
+                            <h4 class="text-base font-semibold mb-4">所有对话</h4>
                             <div id="settings-all-sessions-content" class="custom-scrollbar"></div>
                         </div>
 
                         <!-- Cron Settings View -->
                         <div id="settings-cron-view" class="settings-content-view">
                             <div class="settings-view-header">
-                                <h4 class="m-0">Scheduled Tasks</h4>
-                                <button id="settings-add-cron-btn" class="btn btn-primary btn-sm">+ Add Task</button>
+                                <h4 class="m-0">定时任务</h4>
+                                <button id="settings-add-cron-btn" class="btn btn-primary btn-sm">+ 添加任务</button>
                             </div>
                             <div id="settings-cron-jobs-content" class="custom-scrollbar"></div>
                         </div>
 
                         <!-- Config Settings View -->
                         <div id="settings-config-view" class="settings-content-view">
-                            <h4 class="text-base font-semibold mb-4">Configuration</h4>
+                            <h4 class="text-base font-semibold mb-4">配置</h4>
                             <div class="config-content">
                                 <div class="form-group">
-                                    <label for="settings-config-gateway-url" class="form-label">Gateway URL</label>
+                                    <label for="settings-config-gateway-url" class="form-label">网关地址</label>
                                     <input type="text" id="settings-config-gateway-url" class="input" value="ws://localhost:18789" placeholder="ws://localhost:18789">
                                 </div>
                                 <div class="form-group">
-                                    <label for="settings-config-gateway-token" class="form-label">Gateway Token (optional)</label>
-                                    <input type="password" id="settings-config-gateway-token" class="input" placeholder="Enter gateway token">
+                                    <label for="settings-config-gateway-token" class="form-label">网关令牌（可选）</label>
+                                    <input type="password" id="settings-config-gateway-token" class="input" placeholder="输入网关令牌">
                                 </div>
                                 <div class="form-group">
-                                    <label for="settings-config-gateway-password" class="form-label">Gateway Password (optional)</label>
-                                    <input type="password" id="settings-config-gateway-password" class="input" placeholder="Enter gateway password">
+                                    <label for="settings-config-gateway-password" class="form-label">网关密码（可选）</label>
+                                    <input type="password" id="settings-config-gateway-password" class="input" placeholder="输入网关密码">
                                 </div>
                                 <div class="button-group">
-                                    <button id="settings-test-connection-btn" class="btn btn-secondary">Test Connection</button>
-                                    <button id="settings-save-config-btn" class="btn btn-primary">Save & Connect</button>
+                                    <button id="settings-test-connection-btn" class="btn btn-secondary">测试连接</button>
+                                    <button id="settings-save-config-btn" class="btn btn-primary">保存并连接</button>
                                 </div>
                                 <div id="settings-config-status" class="status"></div>
                             </div>
@@ -160,19 +166,19 @@
 
                         <!-- Logs Settings View -->
                         <div id="settings-logs-view" class="settings-content-view">
-                            <h4 class="text-base font-semibold mb-4">Client Logs</h4>
+                            <h4 class="text-base font-semibold mb-4">客户端日志</h4>
                             <div class="logs-content-wrapper">
                                 <div class="logs-controls">
                                     <select id="settings-log-level-filter" class="select">
-                                        <option value="">All Levels</option>
-                                        <option value="info">Info</option>
-                                        <option value="warn">Warning</option>
-                                        <option value="error">Error</option>
-                                        <option value="debug">Debug</option>
+                                        <option value="">所有级别</option>
+                                        <option value="info">信息</option>
+                                        <option value="warn">警告</option>
+                                        <option value="error">错误</option>
+                                        <option value="debug">调试</option>
                                     </select>
                                     <input type="number" id="settings-log-limit" class="input w-24" value="500" min="10" max="5000">
-                                    <button id="settings-refresh-logs-btn" class="btn btn-sm">Refresh</button>
-                                    <button id="settings-clear-logs-btn" class="btn btn-sm">Clear Logs</button>
+                                    <button id="settings-refresh-logs-btn" class="btn btn-sm">刷新</button>
+                                    <button id="settings-clear-logs-btn" class="btn btn-sm">清除日志</button>
                                 </div>
                                 <pre id="settings-logs-content" class="logs-content"></pre>
                             </div>
@@ -185,7 +191,7 @@
         <!-- Loading Overlay -->
         <div id="loading-overlay" class="fixed inset-0 bg-black/50 flex flex-col items-center justify-center z-[2000] hidden">
             <div class="spinner"></div>
-            <div id="loading-message" class="mt-5 text-base text-white">Loading...</div>
+            <div id="loading-message" class="mt-5 text-base text-white">加载中...</div>
         </div>
 
         <!-- Toast Container -->

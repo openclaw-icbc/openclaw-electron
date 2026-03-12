@@ -38,6 +38,7 @@ function initializeElements() {
     sessionsList: document.getElementById('sessions-list'),
     sessionsToggleBtn: document.getElementById('sessions-toggle-btn'),
     sessionsToggleIcon: document.getElementById('sessions-toggle-icon'),
+    sessionsCount: document.querySelector('.sessions-count'),
     currentSessionTitle: document.getElementById('current-session-title'),
     sessionStatus: document.getElementById('session-status'),
     chatMessages: document.getElementById('chat-messages'),
@@ -92,7 +93,7 @@ function initializeElements() {
 }
 
 // Utility Functions
-function showLoading(message = 'Loading...') {
+function showLoading(message = '加载中...') {
   elements.loadingMessage.textContent = message;
   elements.loadingOverlay.classList.remove('hidden');
 }
@@ -110,6 +111,13 @@ function showToast(message, type = 'info') {
   setTimeout(() => {
     toast.remove();
   }, 3000);
+}
+
+// Update send button state based on input and session
+function updateSendButtonState() {
+  const hasContent = elements.messageInput.value.trim().length > 0;
+  const hasSession = !!state.currentSessionKey;
+  elements.sendBtn.disabled = !hasContent || !hasSession;
 }
 
 function toggleSessions() {
@@ -290,7 +298,7 @@ function switchSettingsView(viewName) {
 
 // Gateway Connection
 async function connectToGateway(config) {
-  showLoading('Connecting to Gateway...');
+  showLoading('正在连接网关...');
 
   try {
     console.log('Connecting to gateway with config:', {
@@ -307,8 +315,8 @@ async function connectToGateway(config) {
       state.config = config;
       elements.connectionIndicator.classList.remove('offline');
       elements.connectionIndicator.classList.add('online');
-      elements.sessionStatus.textContent = 'Connected';
-      showToast('Connected successfully!', 'success');
+      elements.sessionStatus.textContent = '已连接';
+      showToast('连接成功！', 'success');
 
       // Load sessions after connection
       await loadSessions();
@@ -346,8 +354,8 @@ async function testConnection() {
       config.password !== state.config.password;
 
     if (!configChanged) {
-      showToast('Already connected with these settings!', 'success');
-      showConfigStatus('✅ Already connected! You can start chatting.', 'success');
+      showToast('已经使用这些设置连接！', 'success');
+      showConfigStatus('✅ 已连接！您可以开始聊天。', 'success');
       return;
     }
 
@@ -358,15 +366,15 @@ async function testConnection() {
     }
   }
 
-  showLoading('Testing connection...');
+  showLoading('正在测试连接...');
 
   try {
     // Test connection by actually connecting
     const result = await window.electronAPI.connectGateway(config);
     if (result.success) {
       state.config = config; // Update config
-      showToast('Connection test successful! You are now connected.', 'success');
-      showConfigStatus('✅ Connected! Sessions loaded. You can now create sessions and chat.', 'success');
+      showToast('连接测试成功！您现在已经连接。', 'success');
+      showConfigStatus('✅ 已连接！对话列表已加载。您现在可以创建对话并开始聊天。', 'success');
 
       // IMPORTANT: Load sessions after successful connection
       console.log('Connection successful, loading sessions...');
@@ -405,11 +413,11 @@ async function saveConfig() {
   try {
     await window.electronAPI.saveConfig({ gateway: config });
     state.config = config;
-    showToast('Configuration saved successfully!', 'success');
-    showConfigStatus('✅ Configuration saved!', 'success');
+    showToast('配置保存成功！', 'success');
+    showConfigStatus('✅ 配置已保存！', 'success');
   } catch (error) {
-    showToast(`Failed to save config: ${error.message}`, 'error');
-    showConfigStatus(`❌ Failed to save: ${error.message}`, 'error');
+    showToast(`保存配置失败: ${error.message}`, 'error');
+    showConfigStatus(`❌ 保存失败: ${error.message}`, 'error');
   }
 }
 
@@ -435,7 +443,7 @@ async function saveAndConnect() {
     if (!configChanged) {
       // Already connected with same config, just save
       await saveConfig();
-      showToast('Already connected! Configuration saved.', 'success');
+      showToast('已连接！配置已保存。', 'success');
       return;
     }
   }
@@ -444,9 +452,9 @@ async function saveAndConnect() {
   try {
     await window.electronAPI.saveConfig({ gateway: config });
     state.config = config;
-    showToast('Configuration saved', 'success');
+    showToast('配置已保存', 'success');
   } catch (error) {
-    showToast(`Failed to save config: ${error.message}`, 'error');
+    showToast(`保存配置失败: ${error.message}`, 'error');
     return;
   }
 
@@ -481,6 +489,7 @@ async function loadSessions() {
     if (result.success && result.data) {
       state.sessions = result.data.sessions || [];
       console.log('Loaded sessions:', state.sessions.length);
+      console.log('First session data:', state.sessions[0]); // Debug: check session structure
       renderSessionsList();
 
       // Auto-select first session if available and no session is currently selected
@@ -499,8 +508,13 @@ async function loadSessions() {
 function renderSessionsList() {
   elements.sessionsList.innerHTML = '';
 
+  // Update session count
+  if (elements.sessionsCount) {
+    elements.sessionsCount.textContent = state.sessions.length;
+  }
+
   if (state.sessions.length === 0) {
-    const emptyHtml = '<div class="empty-state"><h3>No sessions</h3><p>Create a new session to get started</p></div>';
+    const emptyHtml = '<div class="empty-state"><h3>暂无对话</h3><p>创建一个新对话开始使用</p></div>';
     elements.sessionsList.innerHTML = emptyHtml;
     return;
   }
@@ -513,30 +527,61 @@ function renderSessionsList() {
 
 function createSessionItem(session) {
   const item = document.createElement('div');
-  item.className = 'session-item';
+  item.className = 'session-detail';
   if (session.key === state.currentSessionKey) {
     item.classList.add('active');
   }
+  item.style.cursor = 'pointer';
+  item.title = '点击打开此对话';
 
-  // Show session label as title
+  console.log('Creating session item for:', session); // Debug: check individual session
+
   const title = session.label || session.key;
 
-  // Show first message if available, otherwise show creation time
-  let subtitle = '';
-  if (session.lastMessage && session.messageCount > 0) {
-    // Show first message (using lastMessage as we don't have firstMessage in API response yet)
-    subtitle = escapeHtml(session.lastMessage.substring(0, 50));
-    if (session.lastMessage.length > 50) {
-      subtitle += '...';
+  // Handle createdAt - check multiple possible field names
+  let createdAt = 'Unknown';
+  if (session.createdAt) {
+    createdAt = formatDate(session.createdAt);
+  } else if (session.created_at) {
+    createdAt = formatDate(session.created_at);
+  } else if (session.timestamp) {
+    createdAt = formatDate(session.timestamp);
+  }
+
+  // Handle messageCount - check multiple possible field names
+  let messageCount = 0;
+  if (session.messageCount !== undefined) {
+    messageCount = session.messageCount;
+  } else if (session.message_count !== undefined) {
+    messageCount = session.message_count;
+  } else if (session.count !== undefined) {
+    messageCount = session.count;
+  }
+
+  // Show last message preview if available
+  let messagePreview = '';
+  if (session.lastMessage && messageCount > 0) {
+    messagePreview = escapeHtml(session.lastMessage.substring(0, 60));
+    if (session.lastMessage.length > 60) {
+      messagePreview += '...';
     }
   } else {
-    // Show creation time if no messages
-    subtitle = session.createdAt ? `Created: ${formatDate(session.createdAt)}` : 'No messages yet';
+    messagePreview = '暂无消息';
   }
 
   item.innerHTML = `
-    <div class="session-title">${escapeHtml(title)}</div>
-    <div class="session-info">${subtitle}</div>
+    <div class="session-detail-header">
+      <div>
+        <div class="session-detail-title">${escapeHtml(title)}</div>
+        <div class="session-detail-key">${messagePreview}</div>
+      </div>
+      <div class="session-detail-arrow">→</div>
+    </div>
+    <div class="session-detail-info">
+      <span>创建时间: ${createdAt}</span>
+      <span> | </span>
+      <span>消息数: ${messageCount}</span>
+    </div>
   `;
 
   item.addEventListener('click', () => selectSession(session.key));
@@ -570,7 +615,7 @@ async function selectSession(sessionKey) {
   console.log('Before: messageInput.disabled =', elements.messageInput.disabled);
   elements.messageInput.disabled = false;
   elements.messageInput.focus(); // Auto focus the input
-  elements.sendBtn.disabled = false;
+  updateSendButtonState(); // Update button state based on input content
 
   console.log('After: messageInput.disabled =', elements.messageInput.disabled);
   console.log('messageInput.readOnly =', elements.messageInput.readOnly);
@@ -592,7 +637,7 @@ async function createNewSession() {
 
   if (!state.connected) {
     console.log('Not connected, showing error');
-    showToast('Not connected to gateway. Please configure and connect first.', 'error');
+    showToast('未连接到网关。请先配置并连接。', 'error');
     openSettingsDialog('config');
     return;
   }
@@ -629,17 +674,17 @@ async function createNewSession() {
   // Select the new session
   await selectSession(sessionKey);
 
-  showToast('New chat created! Send a message to start.', 'success');
+  showToast('新对话已创建！发送一条消息开始聊天。', 'success');
 }
 
 async function loadAllSessions() {
   if (!state.connected) {
-    elements.settingsAllSessionsContent.innerHTML = '<div class="empty-state"><h3>Not connected to Gateway</h3><p>Please go to <strong>Config</strong> to set up your connection first</p></div>';
+    elements.settingsAllSessionsContent.innerHTML = '<div class="empty-state"><h3>未连接到网关</h3><p>请前往 <strong>设置</strong> 配置连接</p></div>';
     return;
   }
 
   if (state.sessions.length === 0) {
-    elements.settingsAllSessionsContent.innerHTML = '<div class="empty-state"><h3>No sessions</h3><p>Create a new session to get started</p></div>';
+    elements.settingsAllSessionsContent.innerHTML = '<div class="empty-state"><h3>暂无对话</h3><p>创建一个新对话开始使用</p></div>';
     return;
   }
 
@@ -652,8 +697,26 @@ async function loadAllSessions() {
     detail.title = 'Click to open this chat';
 
     const title = session.label || session.key;
-    const createdAt = session.createdAt ? formatDate(session.createdAt) : 'Unknown';
-    const messageCount = session.messageCount || 0;
+
+    // Handle createdAt - check multiple possible field names
+    let createdAt = 'Unknown';
+    if (session.createdAt) {
+      createdAt = formatDate(session.createdAt);
+    } else if (session.created_at) {
+      createdAt = formatDate(session.created_at);
+    } else if (session.timestamp) {
+      createdAt = formatDate(session.timestamp);
+    }
+
+    // Handle messageCount - check multiple possible field names
+    let messageCount = 0;
+    if (session.messageCount !== undefined) {
+      messageCount = session.messageCount;
+    } else if (session.message_count !== undefined) {
+      messageCount = session.message_count;
+    } else if (session.count !== undefined) {
+      messageCount = session.count;
+    }
 
     detail.innerHTML = `
       <div class="session-detail-header">
@@ -664,9 +727,9 @@ async function loadAllSessions() {
         <div class="session-detail-arrow">→</div>
       </div>
       <div class="session-detail-info">
-        <span>Created: ${createdAt}</span>
+        <span>创建时间: ${createdAt}</span>
         <span> | </span>
-        <span>Messages: ${messageCount}</span>
+        <span>消息数: ${messageCount}</span>
       </div>
     `;
 
@@ -701,7 +764,7 @@ function renderMessages() {
   elements.chatMessages.innerHTML = '';
 
   if (state.messages.length === 0) {
-    elements.chatMessages.innerHTML = '<div class="empty-state"><h3>No messages yet</h3><p>Start a conversation by sending a message</p></div>';
+    elements.chatMessages.innerHTML = '<div class="empty-state"><h3>暂无消息</h3><p>发送一条消息开始对话</p></div>';
     return;
   }
 
@@ -784,21 +847,22 @@ async function sendMessage() {
       console.log('Message sent, runId:', result.runId);
     } else {
       console.error('Failed to send message:', result.error);
-      showToast(`Failed to send message: ${result.error}`, 'error');
+      showToast(`发送消息失败: ${result.error}`, 'error');
       // Remove the message if sending failed
       state.messages.pop();
       renderMessages();
       hideThinkingIndicator();
+      updateSendButtonState();
     }
   } catch (error) {
     console.error('Error sending message:', error);
-    showToast(`Error sending message: ${error.message}`, 'error');
+    showToast(`发送消息错误: ${error.message}`, 'error');
     // Remove the message if sending failed
     state.messages.pop();
     renderMessages();
     hideThinkingIndicator();
   } finally {
-    elements.sendBtn.disabled = false;
+    updateSendButtonState();
   }
 }
 
@@ -893,7 +957,7 @@ async function loadLogs() {
     renderLogs(logs);
   } catch (error) {
     console.error('Failed to load logs:', error);
-    elements.settingsLogsContent.innerHTML = `<div class="empty-state"><h3>Error</h3><p>${escapeHtml(error.message)}</p></div>`;
+    elements.settingsLogsContent.innerHTML = `<div class="empty-state"><h3>错误</h3><p>${escapeHtml(error.message)}</p></div>`;
   }
 }
 
@@ -927,10 +991,10 @@ async function clearLogs() {
   if (confirmed) {
     try {
       await window.electronAPI.clearLogs();
-      showToast('Logs cleared successfully', 'success');
+      showToast('日志已清除', 'success');
       await loadLogs();
     } catch (error) {
-      showToast(`Failed to clear logs: ${error.message}`, 'error');
+      showToast(`清除日志失败: ${error.message}`, 'error');
     }
   }
 }
@@ -938,11 +1002,11 @@ async function clearLogs() {
 // Cron Jobs
 async function loadCronJobs() {
   if (!state.connected) {
-    elements.settingsCronJobsContent.innerHTML = '<div class="empty-state"><h3>Not connected to Gateway</h3><p>Please go to <strong>Config</strong> to set up your connection first</p></div>';
+    elements.settingsCronJobsContent.innerHTML = '<div class="empty-state"><h3>未连接到网关</h3><p>请前往 <strong>设置</strong> 配置连接</p></div>';
     return;
   }
 
-  showLoading('Loading scheduled tasks...');
+  showLoading('正在加载定时任务...');
 
   try {
     const result = await window.electronAPI.listCronJobs({
@@ -956,13 +1020,13 @@ async function loadCronJobs() {
       renderCronJobsList();
     } else {
       console.error('Failed to load cron jobs:', result.error);
-      showToast(`Failed to load cron jobs: ${result.error}`, 'error');
-      elements.cronJobsContent.innerHTML = `<div class="empty-state"><h3>Error</h3><p>${escapeHtml(result.error)}</p></div>`;
+      showToast(`加载定时任务失败: ${result.error}`, 'error');
+      elements.cronJobsContent.innerHTML = `<div class="empty-state"><h3>错误</h3><p>${escapeHtml(result.error)}</p></div>`;
     }
   } catch (error) {
     console.error('Failed to load cron jobs:', error);
-    showToast(`Error loading cron jobs: ${error.message}`, 'error');
-    elements.settingsCronJobsContent.innerHTML = `<div class="empty-state"><h3>Error</h3><p>${escapeHtml(error.message)}</p></div>`;
+    showToast(`加载定时任务错误: ${error.message}`, 'error');
+    elements.settingsCronJobsContent.innerHTML = `<div class="empty-state"><h3>错误</h3><p>${escapeHtml(error.message)}</p></div>`;
   } finally {
     hideLoading();
   }
@@ -1094,7 +1158,7 @@ async function runCronJob(jobId) {
     return;
   }
 
-  showLoading('Running task...');
+  showLoading('正在运行任务...');
 
   try {
     const result = await window.electronAPI.runCronJob(jobId, 'force');
@@ -1106,7 +1170,7 @@ async function runCronJob(jobId) {
     }
   } catch (error) {
     console.error('Failed to run cron job:', error);
-    showToast(`Error running task: ${error.message}`, 'error');
+    showToast(`运行任务错误: ${error.message}`, 'error');
   } finally {
     hideLoading();
   }
@@ -1117,7 +1181,7 @@ async function deleteCronJob(jobId) {
     return;
   }
 
-  showLoading('Deleting task...');
+  showLoading('正在删除任务...');
 
   try {
     const result = await window.electronAPI.removeCronJob(jobId);
@@ -1130,7 +1194,7 @@ async function deleteCronJob(jobId) {
     }
   } catch (error) {
     console.error('Failed to delete cron job:', error);
-    showToast(`Error deleting task: ${error.message}`, 'error');
+    showToast(`删除任务错误: ${error.message}`, 'error');
   } finally {
     hideLoading();
   }
@@ -1763,7 +1827,7 @@ async function showAddCronJobDialog(existingJob = null) {
 
 async function addCronJob() {
   if (!state.connected) {
-    showToast('Not connected to gateway. Please configure and connect first.', 'error');
+    showToast('未连接到网关。请先配置并连接。', 'error');
     openSettingsDialog('config');
     return;
   }
@@ -1773,7 +1837,7 @@ async function addCronJob() {
 
 async function editCronJob(jobId) {
   if (!state.connected) {
-    showToast('Not connected to gateway', 'error');
+    showToast('未连接到网关', 'error');
     return;
   }
 
@@ -2021,7 +2085,7 @@ async function showCronEditForm(existingJob = null) {
       job.id = existingJob.id;
     }
 
-    showLoading(isEdit ? 'Updating scheduled task...' : 'Creating scheduled task...');
+    showLoading(isEdit ? '正在更新定时任务...' : '正在创建定时任务...');
 
     try {
       let apiResult;
@@ -2041,7 +2105,7 @@ async function showCronEditForm(existingJob = null) {
       }
     } catch (error) {
       console.error('Failed to save cron job:', error);
-      showToast(`Error ${isEdit ? 'updating' : 'creating'} task: ${error.message}`, 'error');
+      showToast(`${isEdit ? '更新' : '创建'}任务错误: ${error.message}`, 'error');
     } finally {
       hideLoading();
     }
@@ -2069,10 +2133,10 @@ function setupGatewayEventListeners() {
     state.currentSessionKey = null;
     elements.connectionIndicator.classList.remove('online');
     elements.connectionIndicator.classList.add('offline');
-    elements.sessionStatus.textContent = 'Disconnected';
+    elements.sessionStatus.textContent = '已断开连接';
     elements.messageInput.disabled = true;
-    elements.sendBtn.disabled = true;
-    showToast('Disconnected from gateway', 'warning');
+    updateSendButtonState();
+    showToast('已断开网关连接', 'warning');
   });
 
   window.electronAPI.onGatewayEvent((evt) => {
@@ -2168,9 +2232,7 @@ function setupEventListeners() {
   });
 
   elements.messageInput.addEventListener('input', () => {
-    const hasContent = elements.messageInput.value.trim();
-    const hasSession = !!state.currentSessionKey;
-    elements.sendBtn.disabled = !hasContent || !hasSession;
+    updateSendButtonState();
   });
 
   // Settings - Config
@@ -2364,6 +2426,9 @@ async function init() {
     console.log('Attempting auto-connect...');
     await connectToGateway(state.config);
   }
+
+  // Initialize send button state
+  updateSendButtonState();
 }
 
 // Start the app
