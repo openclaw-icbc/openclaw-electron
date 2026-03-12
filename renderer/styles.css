@@ -880,9 +880,15 @@ small {
   font-size: 0.75rem;
 }
 
-/* Scrollbar */
+/* Scrollbar - WebKit & Standard */
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--border)) transparent;
+}
+
 .custom-scrollbar::-webkit-scrollbar {
   width: 0.5rem;
+  height: 0.5rem;
 }
 
 .custom-scrollbar::-webkit-scrollbar-track {
@@ -896,6 +902,21 @@ small {
 
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
   background-color: hsl(var(--muted-foreground) / 0.5);
+}
+
+/* Chat Messages Scroll Container */
+#chat-messages {
+  overflow-y: auto !important;
+  overscroll-behavior-y: contain;
+}
+
+/* Fix flex scrolling issues */
+#chat-view {
+  min-height: 0;
+}
+
+#chat-messages {
+  min-height: 0;
 }
 
 /* Title Bar */
@@ -1135,8 +1156,46 @@ small {
   padding-left: 1.5rem;
 }
 
+.message-content ul {
+  list-style-type: disc;
+}
+
+.message-content ol {
+  list-style-type: decimal;
+}
+
 .message-content li {
   margin-bottom: 0.25rem;
+  display: list-item;
+}
+
+/* Nested lists */
+.message-content ul ul,
+.message-content ol ul {
+  list-style-type: circle;
+}
+
+.message-content ul ul ul,
+.message-content ol ul ul {
+  list-style-type: square;
+}
+
+/* Task Lists (GitHub-style checkboxes) */
+.message-content .task-list-item {
+  list-style-type: none;
+  position: relative;
+  padding-left: 1.5rem;
+}
+
+.message-content .task-checkbox {
+  position: absolute;
+  left: 0;
+  top: 0.25rem;
+  width: 1rem;
+  height: 1rem;
+  margin: 0;
+  cursor: default;
+  accent-color: hsl(var(--primary));
 }
 
 .message-content code {
