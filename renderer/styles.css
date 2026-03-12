@@ -1076,6 +1076,111 @@ small {
   line-height: 1.5;
 }
 
+/* Markdown Styles within Messages */
+.message-content h1,
+.message-content h2,
+.message-content h3,
+.message-content h4,
+.message-content h5,
+.message-content h6 {
+  margin-top: 1rem;
+  margin-bottom: 0.5rem;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.message-content h1 { font-size: 1.5rem; }
+.message-content h2 { font-size: 1.25rem; }
+.message-content h3 { font-size: 1.125rem; }
+.message-content h4 { font-size: 1rem; }
+.message-content h5 { font-size: 0.875rem; }
+.message-content h6 { font-size: 0.75rem; }
+
+.message-content p {
+  margin-bottom: 0.75rem;
+}
+
+.message-content ul,
+.message-content ol {
+  margin-bottom: 0.75rem;
+  padding-left: 1.5rem;
+}
+
+.message-content li {
+  margin-bottom: 0.25rem;
+}
+
+.message-content code {
+  background-color: hsl(var(--muted) / 0.5);
+  padding: 0.125rem 0.375rem;
+  border-radius: 0.25rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.875em;
+}
+
+.message-content pre {
+  background-color: hsl(var(--muted) / 0.3);
+  border: 1px solid hsl(var(--border) / 0.5);
+  border-radius: 0.375rem;
+  padding: 0.75rem;
+  overflow-x: auto;
+  margin-bottom: 0.75rem;
+}
+
+.message-content pre code {
+  background-color: transparent;
+  padding: 0;
+  border: none;
+}
+
+.message-content blockquote {
+  border-left: 3px solid hsl(var(--primary) / 0.5);
+  padding-left: 0.75rem;
+  margin-bottom: 0.75rem;
+  color: hsl(var(--muted-foreground));
+  font-style: italic;
+}
+
+.message-content a {
+  color: hsl(var(--primary));
+  text-decoration: underline;
+}
+
+.message-content a:hover {
+  text-decoration: none;
+}
+
+.message-content table {
+  border-collapse: collapse;
+  width: 100%;
+  margin-bottom: 0.75rem;
+}
+
+.message-content th,
+.message-content td {
+  border: 1px solid hsl(var(--border) / 0.5);
+  padding: 0.375rem 0.5rem;
+  text-align: left;
+}
+
+.message-content th {
+  background-color: hsl(var(--muted) / 0.3);
+  font-weight: 600;
+}
+
+.message-content hr {
+  border: none;
+  border-top: 1px solid hsl(var(--border) / 0.5);
+  margin: 1rem 0;
+}
+
+.message-content img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.375rem;
+  margin: 0.5rem 0;
+}
+
 /* Thinking Indicator */
 .message.thinking {
   opacity: 0.8;

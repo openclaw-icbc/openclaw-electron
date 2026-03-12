@@ -50,6 +50,8 @@ function createWindow() {
       webSecurity: true,
       // 启用更好的字体渲染
       zoomFactor: 1.0,
+      // 启用开发者工具
+      devTools: true,
     },
     title: 'OpenClaw Desktop Client',
     // 确保更好的渲染质量
@@ -79,10 +81,50 @@ function createWindow() {
     mainWindow?.show();
   });
 
-  // Open DevTools in development
-  if (process.env.NODE_ENV === 'development') {
-    mainWindow.webContents.openDevTools();
-  }
+  // Open DevTools automatically (you can comment this out if not needed)
+  // mainWindow.webContents.openDevTools();
+
+  // Add globalShortcut for DevTools (optional)
+  // This allows Ctrl+Shift+I to open DevTools even with custom title bar
+  mainWindow.webContents.on('before-input-event', (event, input) => {
+    // Windows/Linux: Ctrl+Shift+I
+    // macOS: Cmd+Option+I
+    if (input.key === 'i' || input.key === 'I') {
+      if (input.control && input.shift && !input.alt) {
+        // Windows/Linux: Ctrl+Shift+I
+        event.preventDefault();
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          if (mainWindow.webContents.isDevToolsOpened()) {
+            mainWindow.webContents.closeDevTools();
+          } else {
+            mainWindow.webContents.openDevTools();
+          }
+        }
+      } else if (input.meta && input.alt && !input.control && !input.shift) {
+        // macOS: Cmd+Option+I
+        event.preventDefault();
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          if (mainWindow.webContents.isDevToolsOpened()) {
+            mainWindow.webContents.closeDevTools();
+          } else {
+            mainWindow.webContents.openDevTools();
+          }
+        }
+      }
+    }
+
+    // F12 for DevTools
+    if (input.key === 'F12') {
+      event.preventDefault();
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        if (mainWindow.webContents.isDevToolsOpened()) {
+          mainWindow.webContents.closeDevTools();
+        } else {
+          mainWindow.webContents.openDevTools();
+        }
+      }
+    }
+  });
 
   mainWindow.on('closed', () => {
     mainWindow = null;

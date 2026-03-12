@@ -11,7 +11,9 @@ const state = {
     password: ''
   },
   sessionsExpanded: true,
-  thinkingMessageId: null
+  thinkingMessageId: null,
+  streamingMessageId: null, // Track the message currently being streamed
+  streamingTimeout: null // Timeout to clear streaming state
 };
 
 // DOM Elements
@@ -751,8 +753,15 @@ async function loadChatHistory() {
   try {
     const result = await window.electronAPI.getChatHistory(state.currentSessionKey, 200);
 
+    console.log('=== loadChatHistory result ===');
+    console.log('Success:', result.success);
+    console.log('Data:', result.data);
+
     if (result.success && result.data) {
       state.messages = result.data.messages || [];
+      console.log('Loaded messages count:', state.messages.length);
+      console.log('First message structure:', state.messages[0]);
+      console.log('First message keys:', state.messages[0] ? Object.keys(state.messages[0]) : 'No messages');
       renderMessages();
     }
   } catch (error) {
@@ -761,6 +770,9 @@ async function loadChatHistory() {
 }
 
 function renderMessages() {
+  console.log('=== renderMessages called ===');
+  console.log('Total messages to render:', state.messages.length);
+
   elements.chatMessages.innerHTML = '';
 
   if (state.messages.length === 0) {
@@ -768,43 +780,80 @@ function renderMessages() {
     return;
   }
 
-  state.messages.forEach(msg => {
-    const div = document.createElement('div');
-    const role = msg.role || 'unknown';
-
-    div.className = `message ${role}`;
-
-    const timestamp = msg.timestamp ? formatDate(msg.timestamp) : '';
-    let content = '';
-
-    if (typeof msg.content === 'string') {
-      content = escapeHtml(msg.content);
-    } else if (Array.isArray(msg.content)) {
-      content = msg.content.map(block => {
-        if (block.type === 'text') {
-          return escapeHtml(block.text || '');
-        } else if (block.type === 'image') {
-          return '[Image]';
-        }
-        return '';
-      }).join('<br>');
-    } else {
-      content = JSON.stringify(msg.content);
-    }
-
-    div.innerHTML = `
-      <div class="message-header">
-        <span class="message-role">${role.charAt(0).toUpperCase() + role.slice(1)}</span>
-        <span class="message-time">${timestamp}</span>
-      </div>
-      <div class="message-content">${content}</div>
-    `;
-
-    elements.chatMessages.appendChild(div);
+  state.messages.forEach((msg, index) => {
+    console.log(`Rendering message ${index}:`, msg);
+    const messageElement = createMessageElement(msg);
+    elements.chatMessages.appendChild(messageElement);
   });
 
   // Scroll to bottom
   elements.chatMessages.scrollTop = elements.chatMessages.scrollHeight;
+}
+
+// Create message DOM element
+function createMessageElement(msg) {
+  const div = document.createElement('div');
+
+  // Try multiple possible field names for role
+  let role = msg.role || msg.sender || msg.type || msg.author || 'unknown';
+  console.log('createMessageElement - detected role:', role, 'from message:', msg);
+
+  // Normalize role values
+  if (role === 'bot' || role === 'ai' || role === 'model') {
+    role = 'assistant';
+  } else if (role === 'human' || role === 'user') {
+    role = 'user';
+  }
+
+  div.className = `message ${role}`;
+  div.dataset.messageId = msg.id || `${msg.timestamp}-${msg.role}`;
+
+  const timestamp = msg.timestamp ? formatDate(msg.timestamp) : '';
+  let content = '';
+
+  // Extract content from message
+  let messageContent = '';
+  if (typeof msg.content === 'string') {
+    messageContent = msg.content;
+  } else if (Array.isArray(msg.content)) {
+    messageContent = msg.content.map(block => {
+      if (block.type === 'text') {
+        return block.text || '';
+      } else if (block.type === 'image') {
+        return '[Image]';
+      }
+      return '';
+    }).join('');
+  } else if (msg.text) {
+    messageContent = msg.text;
+  } else {
+    messageContent = JSON.stringify(msg.content);
+  }
+
+  console.log('createMessageElement - extracted content length:', messageContent.length);
+  console.log('createMessageElement - final role:', role);
+
+  // Render markdown for assistant messages, plain text for user messages
+  if (role === 'assistant' && window.marked) {
+    try {
+      content = window.marked.parse(messageContent);
+    } catch (e) {
+      console.error('Markdown parse error:', e);
+      content = escapeHtml(messageContent);
+    }
+  } else {
+    content = escapeHtml(messageContent);
+  }
+
+  div.innerHTML = `
+    <div class="message-header">
+      <span class="message-role">${role.charAt(0).toUpperCase() + role.slice(1)}</span>
+      <span class="message-time">${timestamp}</span>
+    </div>
+    <div class="message-content">${content}</div>
+  `;
+
+  return div;
 }
 
 async function sendMessage() {
@@ -871,6 +920,9 @@ function showThinkingIndicator() {
   // Remove existing thinking indicator if any
   hideThinkingIndicator();
 
+  // Clear any existing streaming state
+  clearStreamingState();
+
   const thinkingDiv = document.createElement('div');
   state.thinkingMessageId = 'thinking-' + Date.now();
   thinkingDiv.id = state.thinkingMessageId;
@@ -903,6 +955,31 @@ function hideThinkingIndicator() {
     }
     state.thinkingMessageId = null;
   }
+  // Note: Don't reset streamingMessageId here - streaming continues after thinking is hidden
+}
+
+// Clear streaming state
+function clearStreamingState() {
+  if (state.streamingMessageId) {
+    console.log('💬 Streaming completed, resetting streamingMessageId');
+    state.streamingMessageId = null;
+  }
+  if (state.streamingTimeout) {
+    clearTimeout(state.streamingTimeout);
+    state.streamingTimeout = null;
+  }
+}
+
+// Reset streaming timeout
+function resetStreamingTimeout() {
+  if (state.streamingTimeout) {
+    clearTimeout(state.streamingTimeout);
+  }
+  // Auto-clear streaming state after 3 seconds of no updates
+  state.streamingTimeout = setTimeout(() => {
+    console.log('⏰ Streaming timeout, clearing streaming state');
+    clearStreamingState();
+  }, 3000);
 }
 
 // Helper function to render a single message
@@ -913,38 +990,8 @@ function renderSingleMessage(msg) {
     emptyState.remove();
   }
 
-  const div = document.createElement('div');
-  const role = msg.role || 'unknown';
-
-  div.className = `message ${role}`;
-
-  const timestamp = msg.timestamp ? formatDate(msg.timestamp) : '';
-  let content = '';
-
-  if (typeof msg.content === 'string') {
-    content = escapeHtml(msg.content);
-  } else if (Array.isArray(msg.content)) {
-    content = msg.content.map(block => {
-      if (block.type === 'text') {
-        return escapeHtml(block.text || '');
-      } else if (block.type === 'image') {
-        return '[Image]';
-      }
-      return '';
-    }).join('<br>');
-  } else {
-    content = JSON.stringify(msg.content);
-  }
-
-  div.innerHTML = `
-    <div class="message-header">
-      <span class="message-role">${role.charAt(0).toUpperCase() + role.slice(1)}</span>
-      <span class="message-time">${timestamp}</span>
-    </div>
-    <div class="message-content">${content}</div>
-  `;
-
-  elements.chatMessages.appendChild(div);
+  const messageElement = createMessageElement(msg);
+  elements.chatMessages.appendChild(messageElement);
 }
 
 // Logs
@@ -2140,19 +2187,206 @@ function setupGatewayEventListeners() {
   });
 
   window.electronAPI.onGatewayEvent((evt) => {
-    console.log('Gateway event:', evt);
+    console.log('=== Gateway event received ===');
+    console.log('Event type:', evt.event);
+    console.log('Event payload:', evt.payload);
 
     // Handle chat events
     if (evt.event === 'chat' && evt.payload) {
       const payload = evt.payload;
+      console.log('Chat event payload keys:', Object.keys(payload));
+      console.log('Chat event payload:', JSON.stringify(payload, null, 2));
+      console.log('Current session key:', state.currentSessionKey);
+      console.log('Payload session key:', payload.sessionKey);
+
       if (payload.sessionKey === state.currentSessionKey) {
-        // Hide thinking indicator when we receive a response
-        hideThinkingIndicator();
-        // Reload chat history when we receive a chat event for current session
-        loadChatHistory();
+        // NOTE: Don't hide thinking indicator here - let handleChatMessage handle it
+        // Incrementally add or update message instead of reloading entire chat history
+        handleChatMessage(payload);
+      } else {
+        console.log('Ignoring chat event for different session');
       }
     }
   });
+}
+
+// Handle incoming chat message (incremental update)
+function handleChatMessage(payload) {
+  console.log('=== Handling chat message ===');
+  console.log('Full payload:', JSON.stringify(payload, null, 2));
+  console.log('Payload keys:', Object.keys(payload));
+  console.log('Current streamingMessageId:', state.streamingMessageId);
+
+  // Handle different payload structures
+  let messages = [];
+
+  if (payload.messages && Array.isArray(payload.messages)) {
+    // Payload contains an array of messages
+    console.log('Payload contains messages array:', payload.messages.length);
+    messages = payload.messages;
+  } else if (payload.message) {
+    // Payload contains a single message object
+    console.log('Payload contains single message');
+    messages = [payload.message];
+  } else if (payload.content || payload.text) {
+    // Payload itself is the message
+    console.log('Payload itself is a message');
+    messages = [payload];
+  } else {
+    console.warn('Unknown payload structure:', payload);
+    return;
+  }
+
+  // Process each message
+  messages.forEach(msg => {
+    console.log('Processing message:', msg);
+    console.log('Message fields:', Object.keys(msg));
+
+    // Try multiple possible field names for role
+    let role = msg.role || msg.sender || msg.type || msg.author || 'unknown';
+    console.log('Detected role:', role);
+
+    // Normalize role values
+    if (role === 'bot' || role === 'ai' || role === 'model') {
+      role = 'assistant';
+    } else if (role === 'human') {
+      role = 'user';
+    }
+
+    // Check if we're currently streaming an assistant message
+    if (role === 'assistant' && state.streamingMessageId) {
+      // We're in the middle of streaming, update the existing message
+      console.log('🔄 Updating streaming message:', state.streamingMessageId);
+      const existingElement = document.querySelector(`[data-message-id="${state.streamingMessageId}"]`);
+
+      if (existingElement) {
+        const messageElement = createMessageElement(msg);
+        existingElement.innerHTML = messageElement.innerHTML;
+
+        // Update in state
+        const lastMsgIndex = state.messages.length - 1;
+        if (lastMsgIndex >= 0) {
+          const lastMsg = state.messages[lastMsgIndex];
+          const lastMsgRole = lastMsg.role || lastMsg.sender || lastMsg.type || lastMsg.author || 'unknown';
+          const lastRoleNorm = (lastMsgRole === 'bot' || lastMsgRole === 'ai' || lastMsgRole === 'model') ? 'assistant' : lastMsgRole;
+          if (lastRoleNorm === 'assistant') {
+            state.messages[lastMsgIndex] = msg;
+          }
+        }
+
+        // Reset streaming timeout
+        resetStreamingTimeout();
+
+        // Scroll to bottom
+        elements.chatMessages.scrollTop = elements.chatMessages.scrollHeight;
+        return;
+      } else {
+        // Streaming element not found, reset streaming state
+        console.log('⚠️ Streaming element not found, resetting streaming state');
+        clearStreamingState();
+      }
+    }
+
+    // Check if this looks like the start of a new streaming response
+    if (role === 'assistant' && !state.streamingMessageId) {
+      // Check if thinking indicator is visible OR if last message is from user (indicating stream start)
+      const thinkingVisible = state.thinkingMessageId !== null;
+      const lastMsg = state.messages[state.messages.length - 1];
+      const lastMsgRole = lastMsg ? (lastMsg.role || lastMsg.sender || lastMsg.type || lastMsg.author || 'unknown') : 'unknown';
+      const lastRoleNorm = (lastMsgRole === 'bot' || lastMsgRole === 'ai' || lastMsgRole === 'model') ? 'assistant' :
+                          (lastMsgRole === 'human') ? 'user' : lastMsgRole;
+      const lastWasUser = lastRoleNorm === 'user';
+
+      console.log('🤔 Thinking visible?', thinkingVisible, 'Last message was user?', lastWasUser);
+
+      if (thinkingVisible || lastWasUser) {
+        // This is the start of streaming - remove thinking and set up streaming state
+        console.log('🚀 Starting new streaming message');
+
+        // Remove thinking indicator first
+        hideThinkingIndicator();
+
+        // Create streaming message ID
+        const messageId = msg.id || `stream-${Date.now()}`;
+        state.streamingMessageId = messageId;
+
+        const messageElement = createMessageElement(msg);
+        messageElement.dataset.messageId = messageId;
+
+        elements.chatMessages.appendChild(messageElement);
+        state.messages.push(msg);
+
+        // Start streaming timeout
+        resetStreamingTimeout();
+
+        // Scroll to bottom
+        elements.chatMessages.scrollTop = elements.chatMessages.scrollHeight;
+        return;
+      }
+    }
+
+    // If we get here and it's an assistant message without streaming state, check if last message is recent assistant
+    if (role === 'assistant' && !state.streamingMessageId) {
+      const lastMsg = state.messages[state.messages.length - 1];
+      if (lastMsg) {
+        const lastMsgRole = lastMsg.role || lastMsg.sender || lastMsg.type || lastMsg.author || 'unknown';
+        const lastRoleNorm = (lastMsgRole === 'bot' || lastMsgRole === 'ai' || lastMsgRole === 'model') ? 'assistant' : lastMsgRole;
+
+        // If last message was assistant and was recent (within 5 seconds), treat as streaming update
+        const lastTimestamp = lastMsg.timestamp || Date.now() / 1000;
+        const isRecent = (Date.now() / 1000 - lastTimestamp) < 5;
+
+        if (lastRoleNorm === 'assistant' && isRecent) {
+          console.log('🔄 Last message was recent assistant, treating as streaming update');
+          // Start streaming from the last message
+          const messageId = lastMsg.id || `stream-${Date.now()}`;
+          state.streamingMessageId = messageId;
+
+          const existingElement = elements.chatMessages.lastElementChild;
+          if (existingElement) {
+            const messageElement = createMessageElement(msg);
+            existingElement.innerHTML = messageElement.innerHTML;
+            existingElement.dataset.messageId = messageId;
+            state.messages[state.messages.length - 1] = msg;
+
+            // Start streaming timeout
+            resetStreamingTimeout();
+
+            // Scroll to bottom
+            elements.chatMessages.scrollTop = elements.chatMessages.scrollHeight;
+            return;
+          }
+        }
+      }
+    }
+
+    // If not streaming, check for explicit ID match
+    const messageId = msg.id || `${msg.timestamp}-${role}`;
+    const existingElement = elements.chatMessages.querySelector(`[data-message-id="${messageId}"]`);
+
+    if (existingElement) {
+      // Update existing message (by explicit ID)
+      console.log('🔄 Updating existing message by ID:', messageId);
+      const messageElement = createMessageElement(msg);
+      existingElement.innerHTML = messageElement.innerHTML;
+    } else {
+      // Add new message
+      console.log('➕ Adding new message:', messageId);
+      const messageElement = createMessageElement(msg);
+      elements.chatMessages.appendChild(messageElement);
+
+      // Add to state.messages
+      state.messages.push(msg);
+
+      // If this is not an assistant message, clear streaming state
+      if (role !== 'assistant') {
+        clearStreamingState();
+      }
+    }
+  });
+
+  // Scroll to bottom
+  elements.chatMessages.scrollTop = elements.chatMessages.scrollHeight;
 }
 
 // Event Listeners
