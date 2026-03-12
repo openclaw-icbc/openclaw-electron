@@ -786,16 +786,16 @@ body {
   align-items: center;
   justify-content: center;
   white-space: nowrap;
-  border-radius: 0.5rem;
   padding: 0.625rem 1rem;
   font-size: 0.875rem;
   font-weight: 500;
   transition: all 200ms cubic-bezier(0.4, 0, 0.2, 1);
   cursor: pointer;
   gap: 0.5rem;
-  background-color: hsl(var(--muted) / 0.3);
+  background-color: transparent;
   color: hsl(var(--muted-foreground));
-  border: 1px solid transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
   position: relative;
 }
 .tabs-trigger:focus-visible {
@@ -803,16 +803,15 @@ body {
   outline-offset: 2px;
 }
 .tabs-trigger[data-state="active"], .tabs-trigger.active {
-  background-color: hsl(var(--background));
-  color: hsl(var(--foreground));
-  border-color: hsl(var(--border));
+  background-color: transparent;
+  color: hsl(var(--primary));
+  border-bottom-color: hsl(var(--primary));
   font-weight: 600;
-  box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.05);
 }
 .tabs-trigger:not(.active):hover {
-  background-color: hsl(var(--muted) / 0.5);
+  background-color: transparent;
   color: hsl(var(--foreground));
-  border-color: hsl(var(--border) / 0.8);
+  border-bottom-color: hsl(var(--border));
 }
 .badge {
   display: inline-flex;
