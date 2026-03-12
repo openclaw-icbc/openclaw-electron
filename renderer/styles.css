@@ -44,6 +44,7 @@
 body {
   background-color: hsl(var(--background));
   color: hsl(var(--foreground));
+  font-family: "Noto Sans SC", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
   font-feature-settings: "rlig" 1, "calt" 1;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -66,11 +67,21 @@ body {
   height: 2.5rem;
   padding-left: 1rem;
   padding-right: 1rem;
+  border: 1px solid;
+  background-color: hsl(210 100% 96% / 0.4);
+  border-color: hsl(210 100% 70%);
+  color: hsl(210 100% 50%);
 }
 
 .btn:focus-visible {
   outline: 2px solid hsl(var(--ring));
   outline-offset: 2px;
+}
+
+.btn:hover:not(:disabled) {
+  background-color: hsl(210 100% 94% / 0.6);
+  border-color: hsl(210 100% 60%);
+  color: hsl(210 100% 45%);
 }
 
 .btn:disabled {
@@ -79,45 +90,64 @@ body {
 }
 
 .btn-primary {
-  background-color: hsl(var(--primary) / 0.9);
-  color: hsl(var(--primary-foreground));
+  background-color: hsl(210 100% 95% / 0.5);
+  border-color: hsl(210 100% 65%);
+  color: hsl(210 100% 55%);
 }
 
 .btn-primary:hover:not(:disabled) {
-  background-color: hsl(var(--primary) / 0.8);
+  background-color: hsl(210 100% 92% / 0.7);
+  border-color: hsl(210 100% 55%);
+  color: hsl(210 100% 50%);
 }
 
 .btn-secondary {
-  background-color: hsl(var(--secondary) / 0.8);
-  color: hsl(var(--secondary-foreground));
+  background-color: hsl(210 80% 96% / 0.4);
+  border-color: hsl(210 80% 65%);
+  color: hsl(210 80% 50%);
 }
 
 .btn-secondary:hover:not(:disabled) {
-  background-color: hsl(var(--secondary) / 0.7);
+  background-color: hsl(210 80% 94% / 0.6);
+  border-color: hsl(210 80% 55%);
+  color: hsl(210 80% 45%);
 }
 
 .btn-destructive {
-  background-color: hsl(var(--destructive) / 0.9);
-  color: hsl(var(--destructive-foreground));
+  background-color: hsl(0 84% 96% / 0.4);
+  border-color: hsl(0 84% 60%);
+  color: hsl(0 84% 50%);
 }
 
 .btn-destructive:hover:not(:disabled) {
-  background-color: hsl(var(--destructive) / 0.8);
+  background-color: hsl(0 84% 94% / 0.6);
+  border-color: hsl(0 84% 50%);
+  color: hsl(0 84% 45%);
 }
 
 .btn-outline {
   border: 1px solid hsl(var(--input) / 0.6);
-  background-color: transparent;
+  background-color: hsl(210 100% 96% / 0.3);
+  border-color: hsl(210 100% 70%);
+  color: hsl(210 100% 50%);
 }
 
 .btn-outline:hover:not(:disabled) {
-  background-color: hsl(var(--accent) / 0.5);
-  color: hsl(var(--accent-foreground));
+  background-color: hsl(210 100% 94% / 0.5);
+  border-color: hsl(210 100% 60%);
+  color: hsl(210 100% 45%);
+}
+
+.btn-ghost {
+  background-color: transparent;
+  border-color: transparent;
+  color: hsl(210 100% 50%);
 }
 
 .btn-ghost:hover:not(:disabled) {
-  background-color: hsl(var(--accent) / 0.5);
-  color: hsl(var(--accent-foreground));
+  background-color: hsl(210 100% 96% / 0.4);
+  border-color: hsl(210 100% 70%);
+  color: hsl(210 100% 45%);
 }
 
 .btn-sm {
@@ -125,6 +155,86 @@ body {
   padding-left: 0.75rem;
   padding-right: 0.75rem;
   font-size: 0.75rem;
+}
+
+/* Settings Dialog Buttons - Original Style */
+.dialog .btn {
+  background-color: hsl(var(--primary) / 0.9);
+  border-color: transparent;
+  color: hsl(var(--primary-foreground));
+}
+
+.dialog .btn-primary {
+  background-color: hsl(var(--primary) / 0.9);
+  border-color: transparent;
+  color: hsl(var(--primary-foreground));
+}
+
+.dialog .btn-primary:hover:not(:disabled) {
+  background-color: hsl(var(--primary) / 0.8);
+  border-color: transparent;
+}
+
+.dialog .btn-secondary {
+  background-color: hsl(var(--secondary) / 0.8);
+  border-color: transparent;
+  color: hsl(var(--secondary-foreground));
+}
+
+.dialog .btn-secondary:hover:not(:disabled) {
+  background-color: hsl(var(--secondary) / 0.7);
+  border-color: transparent;
+}
+
+.dialog .btn-destructive {
+  background-color: hsl(var(--destructive) / 0.9);
+  border-color: transparent;
+  color: hsl(var(--destructive-foreground));
+}
+
+.dialog .btn-destructive:hover:not(:disabled) {
+  background-color: hsl(var(--destructive) / 0.8);
+  border-color: transparent;
+}
+
+.dialog .btn-sm {
+  background-color: hsl(var(--primary) / 0.8);
+  border-color: transparent;
+  color: hsl(var(--primary-foreground));
+}
+
+.dialog .btn-sm:hover:not(:disabled) {
+  background-color: hsl(var(--primary) / 0.7);
+  border-color: transparent;
+}
+
+/* Prompt Dialog Buttons - Original Style */
+.prompt-dialog .btn {
+  background-color: hsl(var(--primary) / 0.9);
+  border-color: transparent;
+  color: hsl(var(--primary-foreground));
+}
+
+.prompt-dialog .btn-primary {
+  background-color: hsl(var(--primary) / 0.9);
+  border-color: transparent;
+  color: hsl(var(--primary-foreground));
+}
+
+.prompt-dialog .btn-primary:hover:not(:disabled) {
+  background-color: hsl(var(--primary) / 0.8);
+  border-color: transparent;
+}
+
+.prompt-dialog .btn-secondary {
+  background-color: hsl(var(--secondary) / 0.8);
+  border-color: transparent;
+  color: hsl(var(--secondary-foreground));
+}
+
+.prompt-dialog .btn-secondary:hover:not(:disabled) {
+  background-color: hsl(var(--secondary) / 0.7);
+  border-color: transparent;
 }
 
 .btn-lg {
@@ -553,11 +663,15 @@ body {
   min-width: auto;
   padding: 0.375rem 0.75rem;
   font-size: 1rem;
-  background-color: transparent;
+  background-color: hsl(210 100% 96% / 0.3);
+  border-color: hsl(210 100% 70%);
+  color: hsl(210 100% 50%);
 }
 
 .cron-job-actions .btn:hover {
-  background-color: hsl(var(--accent) / 0.5);
+  background-color: hsl(210 100% 94% / 0.5);
+  border-color: hsl(210 100% 60%);
+  color: hsl(210 100% 45%);
 }
 
 /* Empty State */
@@ -668,19 +782,20 @@ body {
   align-items: center;
   gap: 0.5rem;
   padding: 0.5rem 1rem;
-  background-color: hsl(var(--background) / 0.6);
-  border: 1px solid hsl(var(--border) / 0.5);
+  background-color: hsl(210 100% 96% / 0.4);
+  border: 1px solid hsl(210 100% 70%);
   border-radius: 0.375rem;
   font-size: 0.875rem;
   font-weight: 500;
   cursor: pointer;
   transition: all 150ms cubic-bezier(0.4, 0, 0.2, 1);
-  color: hsl(var(--foreground));
+  color: hsl(210 100% 50%);
 }
 
 .cron-back-btn:hover {
-  background-color: hsl(var(--accent) / 0.5);
-  border-color: hsl(var(--border) / 0.8);
+  background-color: hsl(210 100% 94% / 0.6);
+  border-color: hsl(210 100% 60%);
+  color: hsl(210 100% 45%);
 }
 
 .cron-edit-actions {
@@ -776,6 +891,14 @@ small {
 }
 
 /* Session Item */
+.sessions-header {
+  user-select: none;
+}
+
+.sessions-header:hover {
+  background-color: hsl(var(--muted) / 0.3);
+}
+
 .session-item {
   padding-left: 1rem;
   padding-right: 1rem;
@@ -873,6 +996,49 @@ small {
 .message-content {
   word-break: break-word;
   line-height: 1.5;
+}
+
+/* Thinking Indicator */
+.message.thinking {
+  opacity: 0.8;
+}
+
+.thinking-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.5rem 0;
+}
+
+.thinking-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  background-color: hsl(var(--primary) / 0.6);
+  border-radius: 50%;
+  animation: thinking-pulse 1.4s infinite ease-in-out both;
+}
+
+.thinking-dot:nth-child(1) {
+  animation-delay: -0.32s;
+}
+
+.thinking-dot:nth-child(2) {
+  animation-delay: -0.16s;
+}
+
+.thinking-dot:nth-child(3) {
+  animation-delay: 0s;
+}
+
+@keyframes thinking-pulse {
+  0%, 80%, 100% {
+    transform: scale(0.6);
+    opacity: 0.4;
+  }
+  40% {
+    transform: scale(1);
+    opacity: 1;
+  }
 }
 
 .message.error {

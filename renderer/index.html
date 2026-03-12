@@ -47,7 +47,11 @@
                         <!-- Chat View Sidebar -->
                         <div id="chat-sidebar" class="flex-1 flex flex-col min-w-0 overflow-hidden">
                             <button id="new-session-btn" class="btn btn-primary m-2.5">+ New Chat</button>
-                            <div id="sessions-list" class="flex-1 overflow-y-auto overflow-x-hidden py-1.5 w-full custom-scrollbar"></div>
+                            <div class="sessions-header px-3 py-2 flex items-center justify-between cursor-pointer hover:bg-muted/50 transition-colors" id="sessions-toggle-btn">
+                                <span class="text-sm font-medium text-foreground">Sessions</span>
+                                <span id="sessions-toggle-icon" class="text-xs text-muted-foreground transition-transform duration-200">▼</span>
+                            </div>
+                            <div id="sessions-list" class="flex-1 overflow-y-auto overflow-x-hidden py-1.5 w-full custom-scrollbar transition-all duration-300"></div>
                         </div>
                     </div>
                 </div>

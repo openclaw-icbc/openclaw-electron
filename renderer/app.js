@@ -9,7 +9,9 @@ const state = {
     url: 'ws://localhost:18789',
     token: '',
     password: ''
-  }
+  },
+  sessionsExpanded: true,
+  thinkingMessageId: null
 };
 
 // DOM Elements
@@ -34,6 +36,8 @@ function initializeElements() {
     // Chat
     newSessionBtn: document.getElementById('new-session-btn'),
     sessionsList: document.getElementById('sessions-list'),
+    sessionsToggleBtn: document.getElementById('sessions-toggle-btn'),
+    sessionsToggleIcon: document.getElementById('sessions-toggle-icon'),
     currentSessionTitle: document.getElementById('current-session-title'),
     sessionStatus: document.getElementById('session-status'),
     chatMessages: document.getElementById('chat-messages'),
@@ -106,6 +110,34 @@ function showToast(message, type = 'info') {
   setTimeout(() => {
     toast.remove();
   }, 3000);
+}
+
+function toggleSessions() {
+  state.sessionsExpanded = !state.sessionsExpanded;
+
+  if (state.sessionsExpanded) {
+    // Expand
+    elements.sessionsList.style.maxHeight = 'none';
+    elements.sessionsList.style.overflow = 'auto';
+    elements.sessionsList.style.opacity = '1';
+    elements.sessionsToggleIcon.style.transform = 'rotate(0deg)';
+  } else {
+    // Collapse
+    elements.sessionsList.style.maxHeight = '0px';
+    elements.sessionsList.style.overflow = 'hidden';
+    elements.sessionsList.style.opacity = '0';
+    elements.sessionsToggleIcon.style.transform = 'rotate(-90deg)';
+  }
+
+  // Save state to config
+  try {
+    window.electronAPI.saveConfig({
+      gateway: state.config,
+      sessionsExpanded: state.sessionsExpanded
+    }).catch(err => console.error('Failed to save sessions state:', err));
+  } catch (error) {
+    console.error('Failed to save sessions state:', error);
+  }
 }
 
 // Custom confirm dialog that returns a Promise
@@ -486,23 +518,25 @@ function createSessionItem(session) {
     item.classList.add('active');
   }
 
-  // Improve title display - show a more friendly format for agent:main:main style keys
-  let title = session.label || session.key;
-  if (!session.label && session.key.includes(':')) {
-    // If no label, show a more readable format
-    const parts = session.key.split(':');
-    if (parts.length >= 3) {
-      title = `${parts[0]} - ${parts[1]} (${parts[2]})`;
-    }
-  }
+  // Show session label as title
+  const title = session.label || session.key;
 
-  const lastMessage = session.lastMessage || 'No messages yet';
-  const timestamp = session.lastMessageTimestamp ? formatDate(session.lastMessageTimestamp) : '';
+  // Show first message if available, otherwise show creation time
+  let subtitle = '';
+  if (session.lastMessage && session.messageCount > 0) {
+    // Show first message (using lastMessage as we don't have firstMessage in API response yet)
+    subtitle = escapeHtml(session.lastMessage.substring(0, 50));
+    if (session.lastMessage.length > 50) {
+      subtitle += '...';
+    }
+  } else {
+    // Show creation time if no messages
+    subtitle = session.createdAt ? `Created: ${formatDate(session.createdAt)}` : 'No messages yet';
+  }
 
   item.innerHTML = `
     <div class="session-title">${escapeHtml(title)}</div>
-    <div class="session-info">${escapeHtml(lastMessage.substring(0, 50))}${lastMessage.length > 50 ? '...' : ''}</div>
-    ${timestamp ? `<div class="session-info">${timestamp}</div>` : ''}
+    <div class="session-info">${subtitle}</div>
   `;
 
   item.addEventListener('click', () => selectSession(session.key));
@@ -717,7 +751,29 @@ async function sendMessage() {
     return;
   }
 
+  // Clear input immediately
   elements.messageInput.value = '';
+
+  // Create user message object
+  const userMessage = {
+    role: 'user',
+    content: message,
+    timestamp: Date.now()
+  };
+
+  // Add to state messages
+  state.messages.push(userMessage);
+
+  // Render the message immediately
+  renderSingleMessage(userMessage);
+
+  // Display thinking indicator
+  showThinkingIndicator();
+
+  // Scroll to bottom to show the new message
+  elements.chatMessages.scrollTop = elements.chatMessages.scrollHeight;
+
+  // Disable send button while sending
   elements.sendBtn.disabled = true;
 
   try {
@@ -729,13 +785,102 @@ async function sendMessage() {
     } else {
       console.error('Failed to send message:', result.error);
       showToast(`Failed to send message: ${result.error}`, 'error');
+      // Remove the message if sending failed
+      state.messages.pop();
+      renderMessages();
+      hideThinkingIndicator();
     }
   } catch (error) {
     console.error('Error sending message:', error);
     showToast(`Error sending message: ${error.message}`, 'error');
+    // Remove the message if sending failed
+    state.messages.pop();
+    renderMessages();
+    hideThinkingIndicator();
   } finally {
     elements.sendBtn.disabled = false;
   }
+}
+
+// Show thinking indicator
+function showThinkingIndicator() {
+  // Remove existing thinking indicator if any
+  hideThinkingIndicator();
+
+  const thinkingDiv = document.createElement('div');
+  state.thinkingMessageId = 'thinking-' + Date.now();
+  thinkingDiv.id = state.thinkingMessageId;
+  thinkingDiv.className = 'message assistant thinking';
+
+  thinkingDiv.innerHTML = `
+    <div class="message-header">
+      <span class="message-role">Assistant</span>
+      <span class="message-time">${formatDate(Date.now())}</span>
+    </div>
+    <div class="message-content">
+      <div class="thinking-indicator">
+        <span class="thinking-dot"></span>
+        <span class="thinking-dot"></span>
+        <span class="thinking-dot"></span>
+      </div>
+    </div>
+  `;
+
+  elements.chatMessages.appendChild(thinkingDiv);
+  elements.chatMessages.scrollTop = elements.chatMessages.scrollHeight;
+}
+
+// Hide thinking indicator
+function hideThinkingIndicator() {
+  if (state.thinkingMessageId) {
+    const thinkingElement = document.getElementById(state.thinkingMessageId);
+    if (thinkingElement) {
+      thinkingElement.remove();
+    }
+    state.thinkingMessageId = null;
+  }
+}
+
+// Helper function to render a single message
+function renderSingleMessage(msg) {
+  // Remove empty state if present
+  const emptyState = elements.chatMessages.querySelector('.empty-state');
+  if (emptyState) {
+    emptyState.remove();
+  }
+
+  const div = document.createElement('div');
+  const role = msg.role || 'unknown';
+
+  div.className = `message ${role}`;
+
+  const timestamp = msg.timestamp ? formatDate(msg.timestamp) : '';
+  let content = '';
+
+  if (typeof msg.content === 'string') {
+    content = escapeHtml(msg.content);
+  } else if (Array.isArray(msg.content)) {
+    content = msg.content.map(block => {
+      if (block.type === 'text') {
+        return escapeHtml(block.text || '');
+      } else if (block.type === 'image') {
+        return '[Image]';
+      }
+      return '';
+    }).join('<br>');
+  } else {
+    content = JSON.stringify(msg.content);
+  }
+
+  div.innerHTML = `
+    <div class="message-header">
+      <span class="message-role">${role.charAt(0).toUpperCase() + role.slice(1)}</span>
+      <span class="message-time">${timestamp}</span>
+    </div>
+    <div class="message-content">${content}</div>
+  `;
+
+  elements.chatMessages.appendChild(div);
 }
 
 // Logs
@@ -1937,6 +2082,8 @@ function setupGatewayEventListeners() {
     if (evt.event === 'chat' && evt.payload) {
       const payload = evt.payload;
       if (payload.sessionKey === state.currentSessionKey) {
+        // Hide thinking indicator when we receive a response
+        hideThinkingIndicator();
         // Reload chat history when we receive a chat event for current session
         loadChatHistory();
       }
@@ -2004,6 +2151,11 @@ function setupEventListeners() {
     });
   } else {
     console.error('ERROR: newSessionBtn element not found!');
+  }
+
+  // Sessions toggle
+  if (elements.sessionsToggleBtn) {
+    elements.sessionsToggleBtn.addEventListener('click', toggleSessions);
   }
 
   // Send message
@@ -2190,6 +2342,18 @@ async function init() {
         password: savedConfig.gateway.password || ''
       };
       console.log('Loaded config:', state.config);
+
+      // Load sessions expanded state
+      if (savedConfig.sessionsExpanded !== undefined) {
+        state.sessionsExpanded = savedConfig.sessionsExpanded;
+        // Apply the state
+        if (!state.sessionsExpanded) {
+          elements.sessionsList.style.maxHeight = '0px';
+          elements.sessionsList.style.overflow = 'hidden';
+          elements.sessionsList.style.opacity = '0';
+          elements.sessionsToggleIcon.style.transform = 'rotate(-90deg)';
+        }
+      }
     }
   } catch (error) {
     console.error('Failed to load config:', error);
