@@ -735,6 +735,11 @@ body {
   opacity: 0.5;
   background-color: hsl(var(--muted) / 0.3);
 }
+.input-error, .input-error:focus-visible {
+  border-color: hsl(var(--destructive)) !important;
+  outline-color: hsl(var(--destructive) / 0.5) !important;
+  background-color: hsl(var(--destructive) / 0.05) !important;
+}
 .textarea {
   display: block;
   min-height: 5rem;
@@ -780,6 +785,16 @@ body {
   outline: 2px solid hsl(var(--ring) / 0.5);
   outline-offset: 2px;
   border-color: hsl(var(--ring) / 0.5);
+}
+select.input-error, select.input-error:focus-visible {
+  border-color: hsl(var(--destructive)) !important;
+  outline-color: hsl(var(--destructive) / 0.5) !important;
+  background-color: hsl(var(--destructive) / 0.05) !important;
+}
+.select:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+  background-color: hsl(var(--muted) / 0.5);
 }
 .tabs-trigger {
   display: inline-flex;

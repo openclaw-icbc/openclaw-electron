@@ -241,14 +241,82 @@ function showPrompt(title, message, defaultValue = '') {
 }
 
 function formatDate(timestamp) {
-  const date = new Date(timestamp);
+  if (!timestamp) return 'Unknown';
+
+  // Handle different timestamp formats
+  let ts = timestamp;
+
+  // If it's a number or numeric string
+  if (typeof ts === 'number' || (typeof ts === 'string' && /^\d+$/.test(ts))) {
+    ts = Number(ts);
+    // If timestamp is in seconds (less than 10 digits), convert to milliseconds
+    if (ts < 10000000000) {
+      ts = ts * 1000;
+    }
+  }
+
+  const date = new Date(ts);
+
+  // Check if date is valid
+  if (isNaN(date.getTime())) {
+    return 'Unknown';
+  }
+
   const now = new Date();
   const diff = now - date;
 
-  if (diff < 60000) return 'Just now';
-  if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
-  if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
+  // Future dates
+  if (diff < 0) {
+    return date.toLocaleDateString();
+  }
+
+  if (diff < 60000) return '刚刚';
+  if (diff < 3600000) return `${Math.floor(diff / 60000)}分钟前`;
+  if (diff < 86400000) return `${Math.floor(diff / 3600000)}小时前`;
+
+  // Check if it's this year
+  if (date.getFullYear() === now.getFullYear()) {
+    return `${date.getMonth() + 1}月${date.getDate()}日`;
+  }
+
   return date.toLocaleDateString();
+}
+
+// Helper function to extract createdAt from session object
+function getSessionCreatedAt(session) {
+  if (!session || typeof session !== 'object') return null;
+
+  const possibleFields = [
+    'createdAt', 'created_at', 'createTime', 'create_time',
+    'timestamp', 'ts', 'date', 'time', 'created'
+  ];
+
+  for (const field of possibleFields) {
+    if (session[field] != null) {
+      return session[field];
+    }
+  }
+
+  return null;
+}
+
+// Helper function to extract messageCount from session object
+function getSessionMessageCount(session) {
+  if (!session || typeof session !== 'object') return 0;
+
+  const possibleFields = [
+    'messageCount', 'message_count', 'count', 'msgCount', 'msg_count',
+    'messages', 'totalMessages', 'total_messages', 'msgCnt', 'messageCnt'
+  ];
+
+  for (const field of possibleFields) {
+    if (session[field] != null) {
+      const val = parseInt(session[field], 10);
+      if (!isNaN(val)) return val;
+    }
+  }
+
+  return 0;
 }
 
 function escapeHtml(text) {
@@ -489,7 +557,23 @@ async function loadSessions() {
     console.log('Sessions result:', result);
 
     if (result.success && result.data) {
-      state.sessions = result.data.sessions || [];
+      // Handle different possible response structures from gateway
+      let sessions = [];
+      if (Array.isArray(result.data)) {
+        // Gateway may return array directly
+        sessions = result.data;
+      } else if (result.data.sessions && Array.isArray(result.data.sessions)) {
+        // Expected structure: { sessions: [...] }
+        sessions = result.data.sessions;
+      } else if (result.data.items && Array.isArray(result.data.items)) {
+        // Alternative: { items: [...] }
+        sessions = result.data.items;
+      } else if (result.data.data && Array.isArray(result.data.data)) {
+        // Alternative: { data: [...] }
+        sessions = result.data.data;
+      }
+
+      state.sessions = sessions;
       console.log('Loaded sessions:', state.sessions.length);
       console.log('First session data:', state.sessions[0]); // Debug: check session structure
       renderSessionsList();
@@ -540,25 +624,12 @@ function createSessionItem(session) {
 
   const title = session.label || session.key;
 
-  // Handle createdAt - check multiple possible field names
-  let createdAt = 'Unknown';
-  if (session.createdAt) {
-    createdAt = formatDate(session.createdAt);
-  } else if (session.created_at) {
-    createdAt = formatDate(session.created_at);
-  } else if (session.timestamp) {
-    createdAt = formatDate(session.timestamp);
-  }
+  // Handle createdAt using helper function
+  const createdAtValue = getSessionCreatedAt(session);
+  const createdAt = createdAtValue ? formatDate(createdAtValue) : '未知';
 
-  // Handle messageCount - check multiple possible field names
-  let messageCount = 0;
-  if (session.messageCount !== undefined) {
-    messageCount = session.messageCount;
-  } else if (session.message_count !== undefined) {
-    messageCount = session.message_count;
-  } else if (session.count !== undefined) {
-    messageCount = session.count;
-  }
+  // Handle messageCount using helper function
+  const messageCount = getSessionMessageCount(session);
 
   // Show last message preview if available
   let messagePreview = '';
@@ -700,25 +771,12 @@ async function loadAllSessions() {
 
     const title = session.label || session.key;
 
-    // Handle createdAt - check multiple possible field names
-    let createdAt = 'Unknown';
-    if (session.createdAt) {
-      createdAt = formatDate(session.createdAt);
-    } else if (session.created_at) {
-      createdAt = formatDate(session.created_at);
-    } else if (session.timestamp) {
-      createdAt = formatDate(session.timestamp);
-    }
+    // Handle createdAt using helper function
+    const createdAtValue = getSessionCreatedAt(session);
+    const createdAt = createdAtValue ? formatDate(createdAtValue) : '未知';
 
-    // Handle messageCount - check multiple possible field names
-    let messageCount = 0;
-    if (session.messageCount !== undefined) {
-      messageCount = session.messageCount;
-    } else if (session.message_count !== undefined) {
-      messageCount = session.message_count;
-    } else if (session.count !== undefined) {
-      messageCount = session.count;
-    }
+    // Handle messageCount using helper function
+    const messageCount = getSessionMessageCount(session);
 
     detail.innerHTML = `
       <div class="session-detail-header">
@@ -1085,8 +1143,8 @@ function renderCronJobsList() {
   if (state.cronJobs.length === 0) {
     elements.settingsCronJobsContent.innerHTML = `
       <div class="empty-state">
-        <h3>No scheduled tasks</h3>
-        <p>Click the <strong>+ Add Task</strong> button to create your first scheduled task</p>
+        <h3>暂无定时任务</h3>
+        <p>点击 <strong>+ 添加任务</strong> 按钮创建您的第一个定时任务</p>
       </div>
     `;
     return;
@@ -1100,10 +1158,10 @@ function renderCronJobsList() {
   const header = document.createElement('div');
   header.className = 'cron-jobs-header';
   header.innerHTML = `
-    <div class="cron-job-name">Name</div>
-    <div class="cron-job-schedule">Schedule</div>
-    <div class="cron-job-status">Status</div>
-    <div class="cron-job-actions">Actions</div>
+    <div class="cron-job-name">名称</div>
+    <div class="cron-job-schedule">调度</div>
+    <div class="cron-job-status">状态</div>
+    <div class="cron-job-actions">操作</div>
   `;
   table.appendChild(header);
 
@@ -1114,7 +1172,7 @@ function renderCronJobsList() {
 
     const scheduleText = formatSchedule(job.schedule);
     const statusClass = job.enabled ? 'enabled' : 'disabled';
-    const statusText = job.enabled ? 'Enabled' : 'Disabled';
+    const statusText = job.enabled ? '已启用' : '已禁用';
 
     row.innerHTML = `
       <div class="cron-job-name">
@@ -1126,9 +1184,9 @@ function renderCronJobsList() {
         <span class="status-badge ${statusClass}">${statusText}</span>
       </div>
       <div class="cron-job-actions">
-        <button class="btn btn-small btn-secondary cron-run-btn" data-id="${escapeHtml(job.id)}" title="Run now">▶</button>
-        <button class="btn btn-small btn-secondary cron-edit-btn" data-id="${escapeHtml(job.id)}" title="Edit">✏️</button>
-        <button class="btn btn-small btn-secondary cron-delete-btn" data-id="${escapeHtml(job.id)}" title="Delete">🗑</button>
+        <button class="btn btn-small btn-secondary cron-run-btn" data-id="${escapeHtml(job.id)}" title="立即运行">▶</button>
+        <button class="btn btn-small btn-secondary cron-edit-btn" data-id="${escapeHtml(job.id)}" title="编辑">✏️</button>
+        <button class="btn btn-small btn-secondary cron-delete-btn" data-id="${escapeHtml(job.id)}" title="删除">🗑</button>
       </div>
     `;
 
@@ -1900,7 +1958,6 @@ async function editCronJob(jobId) {
 
 async function showCronEditForm(existingJob = null) {
   const isEdit = !!existingJob;
-  const title = isEdit ? 'Edit Scheduled Task' : 'Add Scheduled Task';
 
   // Load agents list
   let agents = [];
@@ -1935,6 +1992,26 @@ async function showCronEditForm(existingJob = null) {
   const defaultAccountId = existingJob?.payload?.accountId || '';
   const defaultDeleteAfterRun = existingJob?.deleteAfterRun || false;
 
+  // Pre-fill schedule values
+  const defaultScheduleKind = existingJob?.schedule?.kind || 'every';
+  const unitToMs = { s: 1000, m: 60000, h: 3600000, d: 86400000 };
+  let defaultEveryAmount = 1;
+  let defaultEveryUnit = 'm';
+  if (existingJob?.schedule?.kind === 'every' && existingJob?.schedule?.everyMs) {
+    const ms = existingJob.schedule.everyMs;
+    // Find the best unit
+    for (const [unit, unitMs] of Object.entries(unitToMs).reverse()) {
+      if (ms % unitMs === 0) {
+        defaultEveryUnit = unit;
+        defaultEveryAmount = Math.floor(ms / unitMs);
+        break;
+      }
+    }
+  }
+  const defaultAtValue = existingJob?.schedule?.kind === 'at' ? (existingJob?.schedule?.at || '') : '';
+  const defaultCronExpr = existingJob?.schedule?.kind === 'cron' ? (existingJob?.schedule?.expr || '') : '';
+  const defaultCronTz = existingJob?.schedule?.kind === 'cron' ? (existingJob?.schedule?.tz || '') : '';
+
   // Build agents options
   const agentsOptions = agents.map(agent =>
     `<option value="${escapeHtml(agent.id)}">${escapeHtml(agent.label || agent.id)} (${escapeHtml(agent.id)})</option>`
@@ -1944,152 +2021,198 @@ async function showCronEditForm(existingJob = null) {
     <div class="cron-edit-form">
       <div class="cron-edit-header">
         <div>
-          <button class="cron-back-btn" id="cron-back-btn">← Back to List</button>
-          <h4 style="margin-top: 1rem;">${escapeHtml(title)}</h4>
+          <button class="cron-back-btn" id="cron-back-btn">← 返回列表</button>
+          <h4 style="margin-top: 1rem;">${isEdit ? '编辑任务' : '新建任务'}</h4>
         </div>
       </div>
 
       <form id="cron-edit-form-element">
         <div class="form-group">
-          <label class="form-label">Name</label>
-          <input type="text" name="name" class="input" value="${escapeHtml(defaultName)}" placeholder="Task name" required>
+          <label class="form-label">名称 *</label>
+          <input type="text" name="name" class="input" value="${escapeHtml(defaultName)}" placeholder="例如：晨间简报" required>
         </div>
 
         <div class="form-group">
-          <label class="form-label">Description</label>
-          <textarea name="description" class="textarea" rows="2" placeholder="Optional description">${escapeHtml(defaultDescription)}</textarea>
+          <label class="form-label">描述</label>
+          <textarea name="description" class="textarea" rows="2" placeholder="此任务的可选说明">${escapeHtml(defaultDescription)}</textarea>
         </div>
 
         <div class="form-group">
           <label class="form-label">
             <input type="checkbox" name="enabled" ${defaultEnabled ? 'checked' : ''} style="width: auto; margin-right: 0.5rem;">
-            Enabled
+            已启用
           </label>
         </div>
 
         <div style="margin-bottom: 1.5rem; padding-bottom: 1.5rem; border-bottom: 2px solid hsl(var(--primary));">
-          <h5 style="font-size: 0.875rem; font-weight: 600; margin-bottom: 0.75rem;">Schedule Configuration</h5>
+          <h5 style="font-size: 0.875rem; font-weight: 600; margin-bottom: 0.75rem;">调度 *</h5>
 
           <div class="form-group">
-            <label class="form-label">Wake Mode</label>
+            <label class="form-label">调度类型 *</label>
+            <select name="scheduleKind" class="select" id="schedule-kind-select" required>
+              <option value="every" ${defaultScheduleKind === 'every' ? 'selected' : ''}>每隔（间隔）</option>
+              <option value="at" ${defaultScheduleKind === 'at' ? 'selected' : ''}>指定时间</option>
+              <option value="cron" ${defaultScheduleKind === 'cron' ? 'selected' : ''}>Cron</option>
+            </select>
+          </div>
+
+          <!-- Every schedule -->
+          <div class="form-group schedule-type-group" data-type="every" id="schedule-every-group" ${defaultScheduleKind !== 'every' ? 'style="display: none;"' : ''}>
+            <label class="form-label">间隔 *</label>
+            <div style="display: flex; gap: 0.5rem;">
+              <input type="number" name="everyAmount" id="every-amount" class="input" value="${defaultEveryAmount}" min="1" style="flex: 1;">
+              <select name="everyUnit" id="every-unit" class="select" style="width: auto;">
+                <option value="m" ${defaultEveryUnit === 'm' ? 'selected' : ''}>分钟</option>
+                <option value="h" ${defaultEveryUnit === 'h' ? 'selected' : ''}>小时</option>
+                <option value="d" ${defaultEveryUnit === 'd' ? 'selected' : ''}>天</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- At schedule -->
+          <div class="form-group schedule-type-group" data-type="at" id="schedule-at-group" ${defaultScheduleKind !== 'at' ? 'style="display: none;"' : ''}>
+            <label class="form-label">运行时间 *</label>
+            <input type="datetime-local" name="atValue" id="at-value" class="input" value="${escapeHtml(defaultAtValue ? new Date(defaultAtValue).toISOString().slice(0, 16) : '')}">
+            <small style="display: block; margin-top: 0.25rem; font-size: 0.75rem; color: hsl(var(--muted-foreground));">选择具体的日期和时间</small>
+          </div>
+
+          <!-- Cron schedule -->
+          <div class="form-group schedule-type-group" data-type="cron" id="schedule-cron-group" ${defaultScheduleKind !== 'cron' ? 'style="display: none;"' : ''}>
+            <label class="form-label">表达式 *</label>
+            <input type="text" name="cronExpr" id="cron-expr" class="input" placeholder="0 7 * * *" value="${escapeHtml(defaultCronExpr)}">
+            <small style="display: block; margin-top: 0.25rem; font-size: 0.75rem; color: hsl(var(--muted-foreground));">标准 Cron 格式</small>
+          </div>
+
+          <div class="form-group schedule-type-group" data-type="cron" id="schedule-cron-tz-group" ${defaultScheduleKind !== 'cron' ? 'style="display: none;"' : ''}>
+            <label class="form-label">时区（可选）</label>
+            <input type="text" name="cronTz" id="cron-tz" class="input" placeholder="例如：Asia/Shanghai" value="${escapeHtml(defaultCronTz)}">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">唤醒模式</label>
             <select name="wakeMode" class="select">
-              <option value="next-heartbeat" ${defaultWakeMode === 'next-heartbeat' ? 'selected' : ''}>Next Heartbeat</option>
-              <option value="immediate" ${defaultWakeMode === 'immediate' ? 'selected' : ''}>Immediate</option>
+              <option value="next-heartbeat" ${defaultWakeMode === 'next-heartbeat' ? 'selected' : ''}>下次心跳</option>
+              <option value="immediate" ${defaultWakeMode === 'immediate' ? 'selected' : ''}>立即</option>
             </select>
           </div>
 
           <div class="form-group">
-            <label class="form-label">Session Key (optional)</label>
-            <input type="text" name="sessionKey" class="input" value="${escapeHtml(defaultSessionKey)}" placeholder="Leave empty for new session">
+            <label class="form-label">会话密钥（可选）</label>
+            <input type="text" name="sessionKey" class="input" value="${escapeHtml(defaultSessionKey)}" placeholder="留空以创建新会话">
           </div>
 
           <div class="form-group">
-            <label class="form-label">Session Target</label>
-            <input type="text" name="sessionTarget" class="input" value="${escapeHtml(defaultSessionTarget)}" placeholder="e.g., main">
+            <label class="form-label">会话</label>
+            <select name="sessionTarget" class="select">
+              <option value="main" ${defaultSessionTarget === 'main' ? 'selected' : ''}>主会话（发布系统事件）</option>
+              <option value="isolated" ${defaultSessionTarget === 'isolated' ? 'selected' : ''}>隔离会话（运行助手任务）</option>
+            </select>
+            <small style="display: block; margin-top: 0.25rem; font-size: 0.75rem; color: hsl(var(--muted-foreground));">主会话发布系统事件，隔离会话运行独立的代理轮次</small>
           </div>
         </div>
 
         <div style="margin-bottom: 1.5rem; padding-bottom: 1.5rem; border-bottom: 2px solid hsl(var(--primary));">
-          <h5 style="font-size: 0.875rem; font-weight: 600; margin-bottom: 0.75rem;">Agent Configuration</h5>
+          <h5 style="font-size: 0.875rem; font-weight: 600; margin-bottom: 0.75rem;">执行 *</h5>
 
           <div class="form-group">
-            <label class="form-label">Agent ID</label>
+            <label class="form-label">代理 ID *</label>
             <select name="agentId" class="select" required>
               ${agentsOptions}
             </select>
           </div>
 
           <div class="form-group">
-            <label class="form-label">Payload Kind</label>
+            <label class="form-label">执行内容</label>
             <select name="payloadKind" class="select" id="payloadKindSelect">
-              <option value="agentTurn" ${defaultPayloadKind === 'agentTurn' ? 'selected' : ''}>Agent Turn</option>
-              <option value="text" ${defaultPayloadKind === 'text' ? 'selected' : ''}>Text</option>
+              <option value="systemEvent" ${defaultPayloadKind === 'systemEvent' ? 'selected' : ''}>发布消息到主时间线</option>
+              <option value="agentTurn" ${defaultPayloadKind === 'agentTurn' ? 'selected' : ''}>运行助手任务（隔离）</option>
             </select>
+            <small id="payload-kind-hint" style="display: block; margin-top: 0.25rem; font-size: 0.75rem; color: hsl(var(--muted-foreground));"></small>
           </div>
         </div>
 
         <div style="margin-bottom: 1.5rem; padding-bottom: 1.5rem; border-bottom: 2px solid hsl(var(--primary));">
-          <h5 style="font-size: 0.875rem; font-weight: 600; margin-bottom: 0.75rem;">Message Configuration</h5>
+          <h5 style="font-size: 0.875rem; font-weight: 600; margin-bottom: 0.75rem;">消息内容</h5>
 
           <div class="form-group">
-            <label class="form-label">Message</label>
-            <textarea name="message" class="textarea" rows="4" placeholder="Message content">${escapeHtml(defaultMessage)}</textarea>
+            <label class="form-label" id="message-label">主时间线消息</label>
+            <textarea name="message" class="textarea" rows="4" placeholder="输入要发送的消息内容">${escapeHtml(defaultMessage)}</textarea>
           </div>
 
-          <div class="form-group">
-            <label class="form-label">Model (optional)</label>
-            <input type="text" name="model" class="input" value="${escapeHtml(defaultModel)}" placeholder="e.g., gpt-4">
+          <div class="form-group agent-only-field">
+            <label class="form-label">模型（可选）</label>
+            <input type="text" name="model" class="input" value="${escapeHtml(defaultModel)}" placeholder="例如：openai/gpt-4">
           </div>
 
-          <div class="form-group">
-            <label class="form-label">Thinking (optional)</label>
-            <textarea name="thinking" class="textarea" rows="2" placeholder="Additional thinking context">${escapeHtml(defaultThinking)}</textarea>
+          <div class="form-group agent-only-field">
+            <label class="form-label">思考（可选）</label>
+            <textarea name="thinking" class="textarea" rows="2" placeholder="额外的思考上下文">${escapeHtml(defaultThinking)}</textarea>
           </div>
 
-          <div class="form-group">
-            <label class="form-label">Timeout (seconds, optional)</label>
-            <input type="number" name="timeout" class="input" value="${escapeHtml(defaultTimeout)}" placeholder="e.g., 60" min="1">
+          <div class="form-group agent-only-field">
+            <label class="form-label">超时（秒，可选）</label>
+            <input type="number" name="timeout" class="input" value="${escapeHtml(defaultTimeout)}" placeholder="例如：90" min="1">
           </div>
 
-          <div class="form-group">
-            <label class="form-label">Fallbacks (comma-separated, optional)</label>
-            <input type="text" name="fallbacks" class="input" value="${escapeHtml(defaultFallbacks)}" placeholder="e.g., fallback1, fallback2">
+          <div class="form-group agent-only-field">
+            <label class="form-label">回退（逗号分隔，可选）</label>
+            <input type="text" name="fallbacks" class="input" value="${escapeHtml(defaultFallbacks)}" placeholder="例如：fallback1, fallback2">
           </div>
         </div>
 
-        <div style="margin-bottom: 1.5rem; padding-bottom: 1.5rem; border-bottom: 2px solid hsl(var(--primary));">
-          <h5 style="font-size: 0.875rem; font-weight: 600; margin-bottom: 0.75rem;">Advanced Options</h5>
+        <div id="advanced-options-section" style="margin-bottom: 1.5rem; padding-bottom: 1.5rem; border-bottom: 2px solid hsl(var(--primary));">
+          <h5 style="font-size: 0.875rem; font-weight: 600; margin-bottom: 0.75rem;">高级选项</h5>
 
-          <div class="form-group">
+          <div class="form-group agent-only-field">
             <label class="form-label">
               <input type="checkbox" name="lightContext" ${defaultLightContext ? 'checked' : ''} style="width: auto; margin-right: 0.5rem;">
-              Light Context
+              轻量上下文
             </label>
-            <small style="display: block; margin-top: 0.25rem; font-size: 0.75rem; color: hsl(var(--muted-foreground));">Use minimal context for the task</small>
+            <small style="display: block; margin-top: 0.25rem; font-size: 0.75rem; color: hsl(var(--muted-foreground));">为此任务使用最小上下文</small>
           </div>
 
-          <div class="form-group">
+          <div class="form-group agent-only-field">
             <label class="form-label">
               <input type="checkbox" name="deliver" ${defaultDeliver ? 'checked' : ''} style="width: auto; margin-right: 0.5rem;">
-              Deliver
+              启用投递
             </label>
-            <small style="display: block; margin-top: 0.25rem; font-size: 0.75rem; color: hsl(var(--muted-foreground));">Enable message delivery</small>
+            <small style="display: block; margin-top: 0.25rem; font-size: 0.75rem; color: hsl(var(--muted-foreground));">启用消息投递</small>
           </div>
 
-          <div class="form-group">
-            <label class="form-label">Channel (optional)</label>
-            <input type="text" name="channel" class="input" value="${escapeHtml(defaultChannel)}" placeholder="Delivery channel">
+          <div class="form-group agent-only-field">
+            <label class="form-label">频道（可选）</label>
+            <input type="text" name="channel" class="input" value="${escapeHtml(defaultChannel)}" placeholder="投递频道">
           </div>
 
-          <div class="form-group">
-            <label class="form-label">To (optional)</label>
-            <input type="text" name="to" class="input" value="${escapeHtml(defaultTo)}" placeholder="Recipient">
+          <div class="form-group agent-only-field">
+            <label class="form-label">收件人（可选）</label>
+            <input type="text" name="to" class="input" value="${escapeHtml(defaultTo)}" placeholder="收件人">
           </div>
 
-          <div class="form-group">
+          <div class="form-group agent-only-field">
             <label class="form-label">
               <input type="checkbox" name="bestEffortDeliver" ${defaultBestEffort ? 'checked' : ''} style="width: auto; margin-right: 0.5rem;">
-              Best Effort Delivery
+              尽力投递
             </label>
           </div>
 
-          <div class="form-group">
-            <label class="form-label">Account ID (optional)</label>
-            <input type="text" name="accountId" class="input" value="${escapeHtml(defaultAccountId)}" placeholder="Account ID for delivery">
+          <div class="form-group agent-only-field">
+            <label class="form-label">账户 ID（可选）</label>
+            <input type="text" name="accountId" class="input" value="${escapeHtml(defaultAccountId)}" placeholder="投递用账户 ID">
           </div>
 
           <div class="form-group">
             <label class="form-label">
               <input type="checkbox" name="deleteAfterRun" ${defaultDeleteAfterRun ? 'checked' : ''} style="width: auto; margin-right: 0.5rem;">
-              Delete After Run
+              运行后删除
             </label>
-            <small style="display: block; margin-top: 0.25rem; font-size: 0.75rem; color: hsl(var(--muted-foreground));">Automatically delete this task after execution</small>
+            <small style="display: block; margin-top: 0.25rem; font-size: 0.75rem; color: hsl(var(--muted-foreground));">执行后自动删除此任务</small>
           </div>
         </div>
 
         <div class="cron-edit-actions">
-          <button type="button" class="btn btn-secondary" id="cron-cancel-btn">Cancel</button>
-          <button type="submit" class="btn btn-primary">${isEdit ? 'Update Task' : 'Add Task'}</button>
+          <button type="button" class="btn btn-secondary" id="cron-cancel-btn">取消</button>
+          <button type="submit" class="btn btn-primary">${isEdit ? '更新任务' : '添加任务'}</button>
         </div>
       </form>
     </div>
@@ -2099,21 +2222,114 @@ async function showCronEditForm(existingJob = null) {
   document.getElementById('cron-back-btn').addEventListener('click', loadCronJobs);
   document.getElementById('cron-cancel-btn').addEventListener('click', loadCronJobs);
 
+  // Handle schedule type change
+  const scheduleKindSelect = document.getElementById('schedule-kind-select');
+  const scheduleTypeGroups = document.querySelectorAll('.schedule-type-group');
+
+  function updateScheduleTypeVisibility() {
+    const selectedKind = scheduleKindSelect.value;
+    scheduleTypeGroups.forEach(group => {
+      if (group.dataset.type === selectedKind) {
+        group.style.display = 'block';
+      } else {
+        group.style.display = 'none';
+      }
+    });
+  }
+
+  scheduleKindSelect.addEventListener('change', updateScheduleTypeVisibility);
+  updateScheduleTypeVisibility(); // Initial state
+
+  // Handle payload kind change - systemEvent has different fields than agentTurn
+  const agentIdSelect = document.querySelector('[name="agentId"]');
+  const payloadKindSelect = document.getElementById('payloadKindSelect');
+  const payloadKindHint = document.getElementById('payload-kind-hint');
+
+  const agentOnlyFields = document.querySelectorAll('.agent-only-field');
+  const advancedOptionsHeader = document.querySelector('#advanced-options-section h5');
+  const messageLabel = document.getElementById('message-label');
+
+  function updatePayloadKindState() {
+    const selectedPayloadKind = payloadKindSelect.value;
+    const selectedAgent = agentIdSelect.value;
+
+    if (selectedPayloadKind === 'systemEvent' || selectedAgent === 'main') {
+      // systemEvent payload kind selected or main agent selected
+      if (selectedAgent === 'main') {
+        payloadKindSelect.value = 'systemEvent';
+        payloadKindSelect.disabled = true;
+        payloadKindHint.textContent = '主代理自动使用"发布消息到主时间线"';
+        payloadKindHint.style.color = 'hsl(var(--primary))';
+      } else {
+        payloadKindSelect.disabled = false;
+        payloadKindHint.textContent = '';
+      }
+
+      // Hide agent-only fields when using systemEvent
+      agentOnlyFields.forEach(field => field.style.display = 'none');
+      // Hide the Advanced Options header if all its fields are hidden
+      if (advancedOptionsHeader) {
+        advancedOptionsHeader.style.display = 'none';
+      }
+
+      // Update message label for systemEvent
+      if (messageLabel) {
+        messageLabel.textContent = '主时间线消息';
+      }
+    } else {
+      // agentTurn payload kind
+      payloadKindSelect.disabled = false;
+      payloadKindHint.textContent = '';
+      payloadKindHint.style.color = 'hsl(var(--muted-foreground))';
+
+      // Show agent-only fields
+      agentOnlyFields.forEach(field => field.style.display = '');
+      if (advancedOptionsHeader) {
+        advancedOptionsHeader.style.display = '';
+      }
+
+      // Update message label for agentTurn
+      if (messageLabel) {
+        messageLabel.textContent = '助手任务提示';
+      }
+    }
+  }
+
+  payloadKindSelect.addEventListener('change', updatePayloadKindState);
+  agentIdSelect.addEventListener('change', updatePayloadKindState);
+  updatePayloadKindState(); // Initial state
+
   document.getElementById('cron-edit-form-element').addEventListener('submit', async (e) => {
     e.preventDefault();
 
+    // Clear previous validation errors
+    document.querySelectorAll('.input-error').forEach(el => el.classList.remove('input-error'));
+
     const formData = new FormData(e.target);
-    const job = {
-      name: formData.get('name').trim(),
-      description: formData.get('description').trim(),
-      enabled: formData.get('enabled') === 'on',
-      agentId: formData.get('agentId'),
-      sessionKey: formData.get('sessionKey').trim() || undefined,
-      sessionTarget: formData.get('sessionTarget').trim() || 'main',
-      wakeMode: formData.get('wakeMode'),
-      deleteAfterRun: formData.get('deleteAfterRun') === 'on',
-      payload: {
-        kind: formData.get('payloadKind'),
+    const agentId = formData.get('agentId');
+    const payloadKind = formData.get('payloadKind');
+
+    // Build payload based on payload kind
+    let payload;
+    if (payloadKind === 'systemEvent' || agentId === 'main') {
+      // systemEvent payload has different structure
+      payload = {
+        kind: 'systemEvent',
+        text: formData.get('message').trim() || ''
+      };
+      // systemEvent only supports limited optional fields
+      const model = formData.get('model').trim();
+      if (model) payload.model = model;
+      const thinking = formData.get('thinking').trim();
+      if (thinking) payload.thinking = thinking;
+      const timeout = formData.get('timeout');
+      if (timeout) payload.timeoutSeconds = parseInt(timeout);
+      const fallbacks = formData.get('fallbacks').trim();
+      if (fallbacks) payload.fallbacks = fallbacks.split(',').map(s => s.trim());
+    } else {
+      // Regular agentTurn payload
+      payload = {
+        kind: 'agentTurn',
         message: formData.get('message').trim(),
         model: formData.get('model').trim() || undefined,
         thinking: formData.get('thinking').trim() || undefined,
@@ -2125,8 +2341,73 @@ async function showCronEditForm(existingJob = null) {
         to: formData.get('to').trim() || undefined,
         bestEffortDeliver: formData.get('bestEffortDeliver') === 'on',
         accountId: formData.get('accountId').trim() || undefined
-      }
+      };
+    }
+
+    const job = {
+      name: formData.get('name').trim(),
+      description: formData.get('description').trim(),
+      enabled: formData.get('enabled') === 'on',
+      agentId: agentId,
+      sessionKey: formData.get('sessionKey').trim() || undefined,
+      sessionTarget: formData.get('sessionTarget').trim() || 'main',
+      wakeMode: formData.get('wakeMode'),
+      deleteAfterRun: formData.get('deleteAfterRun') === 'on',
+      payload: payload
     };
+
+    // Validate required fields
+    const errors = [];
+    if (!job.name) {
+      errors.push('名称为必填项');
+      e.target.querySelector('[name="name"]').classList.add('input-error');
+    }
+    if (!job.agentId) {
+      errors.push('代理 ID 为必填项');
+      e.target.querySelector('[name="agentId"]').classList.add('input-error');
+    }
+
+    // Build schedule based on schedule kind
+    const scheduleKind = formData.get('scheduleKind');
+    let schedule = { kind: scheduleKind };
+    const unitToMs = { m: 60000, h: 3600000, d: 86400000 };
+
+    if (scheduleKind === 'every') {
+      const everyAmount = parseInt(formData.get('everyAmount'));
+      const everyUnit = formData.get('everyUnit');
+      if (!everyAmount || everyAmount < 1) {
+        errors.push('间隔必须至少为 1');
+        document.getElementById('every-amount').classList.add('input-error');
+      } else {
+        schedule.everyMs = everyAmount * unitToMs[everyUnit];
+      }
+    } else if (scheduleKind === 'at') {
+      const atValue = formData.get('atValue').trim();
+      if (!atValue) {
+        errors.push('指定时间调度需要设置运行时间');
+        document.getElementById('at-value').classList.add('input-error');
+      } else {
+        schedule.at = new Date(atValue).toISOString();
+      }
+    } else if (scheduleKind === 'cron') {
+      const cronExpr = formData.get('cronExpr').trim();
+      if (!cronExpr) {
+        errors.push('Cron 调度需要设置表达式');
+        document.getElementById('cron-expr').classList.add('input-error');
+      } else {
+        schedule.expr = cronExpr;
+        const cronTz = formData.get('cronTz').trim();
+        if (cronTz) schedule.tz = cronTz;
+      }
+    }
+
+    // If there are validation errors, show them and stop
+    if (errors.length > 0) {
+      showToast('验证错误：' + errors.join('；'), 'error');
+      return;
+    }
+
+    job.schedule = schedule;
 
     if (isEdit) {
       job.id = existingJob.id;
@@ -2145,10 +2426,10 @@ async function showCronEditForm(existingJob = null) {
       }
 
       if (apiResult.success) {
-        showToast(isEdit ? 'Task updated successfully!' : 'Scheduled task created successfully!', 'success');
+        showToast(isEdit ? '任务更新成功！' : '定时任务创建成功！', 'success');
         await loadCronJobs();
       } else {
-        showToast(`Failed to ${isEdit ? 'update' : 'create'} task: ${apiResult.error}`, 'error');
+        showToast(`${isEdit ? '更新' : '创建'}任务失败：${apiResult.error}`, 'error');
       }
     } catch (error) {
       console.error('Failed to save cron job:', error);
