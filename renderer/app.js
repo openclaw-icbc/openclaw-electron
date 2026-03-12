@@ -430,8 +430,13 @@ async function testConnection() {
     }
 
     // Config changed, need to reconnect
-    const confirmReconnect = confirm('Configuration changed. Reconnect with new settings?');
-    if (!confirmReconnect) {
+    const confirmed = await showConfirmDialog(
+      '配置已更改',
+      '配置已更改。是否使用新设置重新连接？',
+      '重新连接',
+      '取消'
+    );
+    if (!confirmed) {
       return;
     }
   }
@@ -1186,7 +1191,7 @@ function renderCronJobsList() {
       <div class="cron-job-actions">
         <button class="btn btn-small btn-secondary cron-run-btn" data-id="${escapeHtml(job.id)}" title="立即运行">▶</button>
         <button class="btn btn-small btn-secondary cron-edit-btn" data-id="${escapeHtml(job.id)}" title="编辑">✏️</button>
-        <button class="btn btn-small btn-secondary cron-delete-btn" data-id="${escapeHtml(job.id)}" title="删除">🗑</button>
+        <button class="btn btn-small btn-destructive cron-delete-btn" data-id="${escapeHtml(job.id)}" title="删除">🗑</button>
       </div>
     `;
 
@@ -1259,7 +1264,13 @@ function formatSchedule(schedule) {
 }
 
 async function runCronJob(jobId) {
-  if (!confirm('Run this scheduled task now?')) {
+  const confirmed = await showConfirmDialog(
+    '立即运行任务',
+    '确定要立即运行此定时任务吗？',
+    '运行',
+    '取消'
+  );
+  if (!confirmed) {
     return;
   }
 
@@ -1282,7 +1293,13 @@ async function runCronJob(jobId) {
 }
 
 async function deleteCronJob(jobId) {
-  if (!confirm('Delete this scheduled task? This action cannot be undone.')) {
+  const confirmed = await showConfirmDialog(
+    '删除定时任务',
+    '确定要删除此定时任务吗？此操作无法撤销。',
+    '删除',
+    '取消'
+  );
+  if (!confirmed) {
     return;
   }
 
