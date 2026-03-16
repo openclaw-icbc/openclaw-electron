@@ -1,7 +1,7 @@
 import WebSocket from 'ws';
 import { EventEmitter } from 'events';
-import { LogManager } from './log-manager';
-import { loadOrCreateDeviceIdentity, signDevicePayload, buildDeviceAuthPayload, publicKeyRawBase64UrlFromPem, type DeviceIdentity } from './device-identity';
+import { LogManager } from './log-manager.js';
+import { loadOrCreateDeviceIdentity, signDevicePayload, buildDeviceAuthPayload, publicKeyRawBase64UrlFromPem, type DeviceIdentity } from './device-identity.js';
 
 export interface GatewayConfig {
   url: string;

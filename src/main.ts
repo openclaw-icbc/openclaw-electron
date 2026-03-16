@@ -1,8 +1,13 @@
 import { app, BrowserWindow, ipcMain, Menu } from 'electron';
 import * as path from 'path';
-import { GatewayClient } from './gateway-client';
-import { ConfigManager } from './config-manager';
-import { LogManager } from './log-manager';
+import { fileURLToPath } from 'url';
+import { GatewayClient } from './gateway-client.js';
+import { ConfigManager } from './config-manager.js';
+import { LogManager } from './log-manager.js';
+
+// ESM compatible __dirname
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // ============================================================================
 // 关键：必须在任何app方法调用之前设置所有命令行参数
@@ -68,7 +73,7 @@ function createWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
-      preload: path.join(__dirname, 'preload.js'),
+      preload: path.join(__dirname, 'preload.cjs'),
       webSecurity: true,
       // 启用更好的字体渲染
       zoomFactor: 1.0,
@@ -224,19 +229,19 @@ ipcMain.handle('connect-gateway', async (event, config) => {
 
     gatewayClient = new GatewayClient(config, logManager);
 
-    gatewayClient.on('connected', (hello) => {
+    gatewayClient.on('connected', (hello: any) => {
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('gateway-connected', hello);
       }
     });
 
-    gatewayClient.on('disconnected', (reason) => {
+    gatewayClient.on('disconnected', (reason: any) => {
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('gateway-disconnected', reason);
       }
     });
 
-    gatewayClient.on('event', (evt) => {
+    gatewayClient.on('event', (evt: any) => {
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('gateway-event', evt);
       }

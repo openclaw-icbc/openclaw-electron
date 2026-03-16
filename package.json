@@ -4,9 +4,9 @@
   "description": "OpenClaw Electron Desktop Client",
   "main": "dist/main.js",
   "scripts": {
-    "build": "tsc && npm run build:css",
+    "build": "tsc && tsc -p tsconfig.preload.json && mv dist/preload.js dist/preload.cjs && npm run build:css",
     "build:css": "npx @tailwindcss/cli -i renderer/styles.css -o renderer/styles-compiled.css",
-    "dev": "npm run build:css && tsc && electron .",
+    "dev": "npm run build:css && tsc && tsc -p tsconfig.preload.json && mv dist/preload.js dist/preload.cjs && electron .",
     "start": "electron .",
     "watch": "tsc --watch"
   },
@@ -17,6 +17,7 @@
   ],
   "author": "",
   "license": "MIT",
+  "type": "module",
   "dependencies": {
     "electron": "^34.0.0",
     "tweetnacl": "^1.0.3",
