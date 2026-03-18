@@ -1,0 +1,5 @@
+/* Tailwind CSS 入口文件 */
+@import "tailwindcss";
+
+/* 导入主样式文件 */
+@import "./main.css";

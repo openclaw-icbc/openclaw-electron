@@ -1,8 +1,9 @@
 /** @type {import('tailwindcss').Config} */
-module.exports = {
+export default {
   content: [
-    './renderer/**/*.html',
-    './renderer/**/*.js'
+    './index.html',
+    './src/**/*.vue',
+    './src/**/*.ts'
   ],
   theme: {
     extend: {
@@ -47,7 +48,13 @@ module.exports = {
         sm: 'calc(var(--radius) - 4px)'
       },
       fontFamily: {
-        sans: ['Noto Sans SC', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'Helvetica Neue', 'Arial', 'Noto Sans', 'PingFang SC', 'Microsoft YaHei', '微软雅黑', 'sans-serif']
+        sans: [
+          "Microsoft YaHei", "微软雅黑",
+          "PingFang SC", "Hiragino Sans GB",
+          "Noto Sans CJK SC", "WenQuanYi Micro Hei", "WenQuanYi Zen Hei",
+          "Noto Sans SC", "system-ui", "-apple-system", "BlinkMacSystemFont",
+          "Segoe UI", "Roboto", "Helvetica Neue", "Arial", "Liberation Sans", "sans-serif"
+        ]
       }
     }
   },

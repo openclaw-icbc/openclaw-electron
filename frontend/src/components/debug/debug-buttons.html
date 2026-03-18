@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>按钮调试工具</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      padding: 20px;
+    }
+    .test-btn {
+      background: #007bff;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      cursor: pointer;
+      margin: 10px;
+      border-radius: 4px;
+    }
+    .test-btn:hover {
+      background: #0056b3;
+    }
+    #log {
+      background: #f5f5f5;
+      padding: 15px;
+      border-radius: 4px;
+      margin-top: 20px;
+      font-family: monospace;
+      white-space: pre-wrap;
+      max-height: 400px;
+      overflow-y: auto;
+    }
+  </style>
+</head>
+<body>
+  <h1>按钮功能调试</h1>
+
+  <div>
+    <button class="test-btn" onclick="testCreateSession()">测试新建会话</button>
+    <button class="test-btn" onclick="testAddCronJob()">测试添加定时任务</button>
+    <button class="test-btn" onclick="checkConnection()">检查连接状态</button>
+    <button class="test-btn" onclick="testListAgents()">测试获取Agents</button>
+  </div>
+
+  <div id="log">等待操作...</div>
+
+  <script>
+    function log(message) {
+      const logDiv = document.getElementById('log');
+      const timestamp = new Date().toLocaleTimeString();
+      logDiv.textContent = `[${timestamp}] ${message}\n` + logDiv.textContent;
+    }
+
+    async function testCreateSession() {
+      log('=== 测试新建会话 ===');
+
+      try {
+        // 检查 electronAPI
+        if (!window.electronAPI) {
+          log('❌ electronAPI 不可用');
+          return;
+        }
+        log('✅ electronAPI 可用');
+
+        // 检查连接状态
+        const connected = await window.electronAPI.isConnected();
+        log(`连接状态: ${connected ? '已连接' : '未连接'}`);
+
+        if (!connected) {
+          log('❌ 请先连接到 Gateway');
+          return;
+        }
+
+        // 获取 agents
+        log('正在获取 agents...');
+        const agentsResult = await window.electronAPI.listAgents();
+        log(`Agents 结果: ${JSON.stringify(agentsResult, null, 2)}`);
+
+        if (!agentsResult.success) {
+          log(`❌ 获取 agents 失败: ${agentsResult.error}`);
+          return;
+        }
+
+        if (!agentsResult.data || agentsResult.data.length === 0) {
+          log('❌ 没有可用的 agents');
+          return;
+        }
+
+        const agent = agentsResult.data[0];
+        log(`使用 agent: ${agent.id}`);
+
+        // 创建会话
+        const title = `调试测试-${Date.now()}`;
+        const sessionKey = `agent:${agent.id}:${title}`;
+
+        log(`正在创建会话: ${title}`);
+        const createResult = await window.electronAPI.createSession({
+          agentId: agent.id,
+          label: title,
+          key: sessionKey
+        });
+
+        log(`创建结果: ${JSON.stringify(createResult, null, 2)}`);
+
+        if (createResult.success) {
+          log(`✅ 会话创建成功: ${createResult.data?.key || createResult.data?.sessionKey}`);
+        } else {
+          log(`❌ 会话创建失败: ${createResult.error}`);
+        }
+
+      } catch (error) {
+        log(`❌ 错误: ${error.message}`);
+        console.error(error);
+      }
+    }
+
+    async function testAddCronJob() {
+      log('=== 测试添加定时任务 ===');
+
+      try {
+        if (!window.electronAPI) {
+          log('❌ electronAPI 不可用');
+          return;
+        }
+
+        const connected = await window.electronAPI.isConnected();
+        log(`连接状态: ${connected ? '已连接' : '未连接'}`);
+
+        if (!connected) {
+          log('❌ 请先连接到 Gateway');
+          return;
+        }
+
+        log('正在获取 agents...');
+        const agentsResult = await window.electronAPI.listAgents();
+        log(`Agents 结果: ${JSON.stringify(agentsResult, null, 2)}`);
+
+        if (!agentsResult.success || !agentsResult.data || agentsResult.data.length === 0) {
+          log('❌ 没有可用的 agents');
+          return;
+        }
+
+        const agent = agentsResult.data[0];
+        log(`使用 agent: ${agent.id}`);
+
+        const newJob = {
+          label: `调试定时任务-${Date.now()}`,
+          description: '这是一个测试任务',
+          schedule: { cron: '0 9 * * *' },
+          agentId: agent.id,
+          enabled: true,
+          payload: {}
+        };
+
+        log(`正在添加定时任务: ${newJob.label}`);
+        const result = await window.electronAPI.addCronJob(newJob);
+
+        log(`添加结果: ${JSON.stringify(result, null, 2)}`);
+
+        if (result.success) {
+          log(`✅ 定时任务添加成功: ${result.data?.id}`);
+        } else {
+          log(`❌ 定时任务添加失败: ${result.error}`);
+        }
+
+      } catch (error) {
+        log(`❌ 错误: ${error.message}`);
+        console.error(error);
+      }
+    }
+
+    async function checkConnection() {
+      log('=== 检查连接状态 ===');
+
+      try {
+        if (!window.electronAPI) {
+          log('❌ electronAPI 不可用');
+          return;
+        }
+
+        const connected = await window.electronAPI.isConnected();
+        log(`连接状态: ${connected ? '✅ 已连接' : '❌ 未连接'}`);
+
+      } catch (error) {
+        log(`❌ 错误: ${error.message}`);
+      }
+    }
+
+    async function testListAgents() {
+      log('=== 测试获取 Agents ===');
+
+      try {
+        if (!window.electronAPI) {
+          log('❌ electronAPI 不可用');
+          return;
+        }
+
+        log('正在获取 agents...');
+        const result = await window.electronAPI.listAgents();
+        log(`Agents 结果: ${JSON.stringify(result, null, 2)}`);
+
+      } catch (error) {
+        log(`❌ 错误: ${error.message}`);
+      }
+    }
+
+    // 页面加载时检查环境
+    window.addEventListener('DOMContentLoaded', () => {
+      log('=== 环境检查 ===');
+      log(`URL: ${window.location.href}`);
+      log(`electronAPI: ${window.electronAPI ? '✅ 可用' : '❌ 不可用'}`);
+
+      if (window.electronAPI) {
+        log(`electronAPI 方法: ${Object.keys(window.electronAPI).join(', ')}`);
+      }
+    });
+  </script>
+</body>
+</html>

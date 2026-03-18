@@ -94,7 +94,20 @@ function createWindow() {
   });
 
   // Load the index.html of the app
-  mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
+  // 开发模式：连接到 Vite 开发服务器
+  // 生产模式：加载构建后的文件
+  const isDev = process.env.NODE_ENV === 'development';
+
+  if (isDev) {
+    // 开发模式：加载 Vite 开发服务器
+    mainWindow.loadURL('http://localhost:5173');
+    console.log('🚀 开发模式：连接到 Vite 开发服务器 (http://localhost:5173)');
+  } else {
+    // 生产模式：加载构建后的文件
+    // __dirname 是 dist/ 目录，所以直接加载 renderer/index.html
+    mainWindow.loadFile(path.join(__dirname, 'renderer/index.html'));
+    console.log('📦 生产模式：加载构建后的文件');
+  }
 
   // 确保正确的UTF-8编码
   mainWindow.webContents.on('did-start-loading', () => {
@@ -266,6 +279,10 @@ ipcMain.handle('disconnect-gateway', async () => {
   }
 });
 
+ipcMain.handle('is-connected', async () => {
+  return gatewayClient?.connected || false;
+});
+
 ipcMain.handle('send-message', async (event, sessionKey, message, attachments) => {
   if (!gatewayClient) {
     return { success: false, error: 'Not connected to gateway' };
@@ -309,6 +326,30 @@ ipcMain.handle('resolve-session', async (event, params) => {
   try {
     const result = await gatewayClient.resolveSession(params);
     return { success: true, data: result };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('delete-session', async (event, key, deleteTranscript = false) => {
+  if (!gatewayClient) {
+    return { success: false, error: 'Not connected to gateway' };
+  }
+  try {
+    await gatewayClient.deleteSession(key, deleteTranscript);
+    return { success: true };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('patch-session', async (event, key, patch) => {
+  if (!gatewayClient) {
+    return { success: false, error: 'Not connected to gateway' };
+  }
+  try {
+    await gatewayClient.patchSession(key, patch);
+    return { success: true };
   } catch (error: any) {
     return { success: false, error: error.message };
   }

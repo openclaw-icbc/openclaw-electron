@@ -1,3 +1,6 @@
+/* Custom Styles - Tailwind CSS v4 compatible */
+@import "tailwindcss";
+
 /* 强制使用微软雅黑字体 */
 * {
   font-family:
@@ -9,8 +12,6 @@
     "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji" !important;
 }
 
-/* Custom Styles - Tailwind CSS v4 compatible */
-@import "tailwindcss";
 :root {
   /* 字体设置 - 微软雅黑优先 */
   --font-sans:

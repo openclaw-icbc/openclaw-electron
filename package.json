@@ -4,9 +4,11 @@
   "description": "OpenClaw Electron Desktop Client",
   "main": "dist/main.js",
   "scripts": {
-    "build": "tsc && tsc -p tsconfig.preload.json && mv dist/preload.js dist/preload.cjs && npm run build:css",
-    "build:css": "npx @tailwindcss/cli -i renderer/styles.css -o renderer/styles-compiled.css",
-    "dev": "npm run build:css && tsc && tsc -p tsconfig.preload.json && mv dist/preload.js dist/preload.cjs && electron .",
+    "build": "tsc && tsc -p tsconfig.preload.json && mv dist/preload.js dist/preload.cjs",
+    "build:frontend": "cd frontend && npm run build",
+    "dev": "npm run build:frontend && tsc && tsc -p tsconfig.preload.json && mv dist/preload.js dist/preload.cjs && electron .",
+    "dev:electron": "tsc && tsc -p tsconfig.preload.json && mv dist/preload.js dist/preload.cjs && cross-env NODE_ENV=development electron .",
+    "dev:hot": "cd frontend && npm run dev & tsc && tsc -p tsconfig.preload.json && mv dist/preload.js dist/preload.cjs && cross-env NODE_ENV=development electron .",
     "start": "electron .",
     "watch": "tsc --watch"
   },
@@ -25,13 +27,9 @@
     "ws": "^8.18.0"
   },
   "devDependencies": {
-    "@tailwindcss/cli": "^4.2.1",
-    "@tailwindcss/forms": "^0.5.11",
     "@types/node": "^22.0.0",
     "@types/ws": "^8.5.13",
-    "autoprefixer": "^10.4.27",
-    "postcss": "^8.5.8",
-    "tailwindcss": "^4.2.1",
+    "cross-env": "^10.1.0",
     "typescript": "^5.7.2"
   }
 }

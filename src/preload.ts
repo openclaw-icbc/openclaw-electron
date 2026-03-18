@@ -15,6 +15,7 @@ export interface ElectronAPI {
   // Gateway connection
   connectGateway: (config: any) => Promise<{ success: boolean; error?: string }>;
   disconnectGateway: () => Promise<{ success: boolean; error?: string }>;
+  isConnected: () => Promise<boolean>;
 
   // Chat
   sendMessage: (sessionKey: string, message: string, attachments?: any[]) => Promise<{ success: boolean; runId?: string; error?: string }>;
@@ -23,6 +24,8 @@ export interface ElectronAPI {
   // Sessions
   listSessions: (params?: any) => Promise<{ success: boolean; data?: any; error?: string }>;
   resolveSession: (params?: any) => Promise<{ success: boolean; data?: any; error?: string }>;
+  deleteSession: (key: string, deleteTranscript?: boolean) => Promise<{ success: boolean; error?: string }>;
+  patchSession: (key: string, patch: any) => Promise<{ success: boolean; error?: string }>;
 
   // Agents
   listAgents: () => Promise<{ success: boolean; data?: any; error?: string }>;
@@ -61,6 +64,7 @@ const electronAPI: ElectronAPI = {
   // Gateway connection
   connectGateway: (config) => ipcRenderer.invoke('connect-gateway', config),
   disconnectGateway: () => ipcRenderer.invoke('disconnect-gateway'),
+  isConnected: () => ipcRenderer.invoke('is-connected'),
 
   sendMessage: (sessionKey, message, attachments) =>
     ipcRenderer.invoke('send-message', sessionKey, message, attachments),
@@ -69,6 +73,8 @@ const electronAPI: ElectronAPI = {
 
   listSessions: (params) => ipcRenderer.invoke('list-sessions', params),
   resolveSession: (params) => ipcRenderer.invoke('resolve-session', params),
+  deleteSession: (key, deleteTranscript) => ipcRenderer.invoke('delete-session', key, deleteTranscript),
+  patchSession: (key, patch) => ipcRenderer.invoke('patch-session', key, patch),
 
   listAgents: () => ipcRenderer.invoke('agents-list'),
 
