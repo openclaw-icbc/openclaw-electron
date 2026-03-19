@@ -8,7 +8,7 @@ export interface Message {
   content: string
   timestamp: number
   createdAt?: number
-  status?: 'sending' | 'sent' | 'error'
+  status?: 'sending' | 'sent' | 'error' | 'streaming'
   attachments?: Attachment[]
   metadata?: Record<string, any>
 }
@@ -46,6 +46,7 @@ export interface ChatState {
   messages: Record<string, Message[]>
   thinkingMessageId: string | null
   streamingMessageId: string | null
+  streamingTimeout: number | null
   loading: boolean
 }
 
