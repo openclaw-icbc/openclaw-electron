@@ -393,7 +393,10 @@ export const useChatStore = defineStore('chat', {
           }).filter(Boolean).join('')
         }
 
-        const messageId = msg.id || `msg-${Date.now()}-${Math.random()}`
+        // If we're currently streaming an assistant message, use the existing ID
+        const messageId = (role === 'assistant' && this.streamingMessageId) 
+          ? this.streamingMessageId 
+          : (msg.id || `msg-${Date.now()}-${Math.random()}`)
 
         // Check if we're currently streaming an assistant message
         if (role === 'assistant' && this.streamingMessageId) {

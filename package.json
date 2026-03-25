@@ -4,11 +4,11 @@
   "description": "OpenClaw Electron Desktop Client",
   "main": "dist/main.js",
   "scripts": {
-    "build": "tsc && tsc -p tsconfig.preload.json && mv dist/preload.js dist/preload.cjs",
+    "build": "tsc && tsc -p tsconfig.preload.json && shx mv dist/preload.js dist/preload.cjs",
     "build:frontend": "cd frontend && npm run build",
-    "dev": "npm run build:frontend && tsc && tsc -p tsconfig.preload.json && mv dist/preload.js dist/preload.cjs && electron .",
-    "dev:electron": "tsc && tsc -p tsconfig.preload.json && mv dist/preload.js dist/preload.cjs && cross-env NODE_ENV=development electron .",
-    "dev:hot": "cd frontend && npm run dev & tsc && tsc -p tsconfig.preload.json && mv dist/preload.js dist/preload.cjs && cross-env NODE_ENV=development electron .",
+    "dev": "npm run build:frontend && tsc && tsc -p tsconfig.preload.json && shx mv dist/preload.js dist/preload.cjs && electron .",
+    "dev:electron": "tsc && tsc -p tsconfig.preload.json && shx mv dist/preload.js dist/preload.cjs && cross-env NODE_ENV=development electron .",
+    "dev:hot": "concurrently \"cd frontend && npm run dev\" \"tsc && tsc -p tsconfig.preload.json && shx mv dist/preload.js dist/preload.cjs && cross-env NODE_ENV=development electron .\"",
     "start": "electron .",
     "watch": "tsc --watch"
   },
@@ -29,7 +29,9 @@
   "devDependencies": {
     "@types/node": "^22.0.0",
     "@types/ws": "^8.5.13",
+    "concurrently": "^9.2.1",
     "cross-env": "^10.1.0",
+    "shx": "^0.4.0",
     "typescript": "^5.7.2"
   }
 }
