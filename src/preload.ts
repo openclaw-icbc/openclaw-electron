@@ -20,6 +20,7 @@ export interface ElectronAPI {
   // Chat
   sendMessage: (sessionKey: string, message: string, attachments?: any[]) => Promise<{ success: boolean; runId?: string; error?: string }>;
   getChatHistory: (sessionKey: string, limit?: number) => Promise<{ success: boolean; data?: any; error?: string }>;
+  abortChat: (sessionKey: string, runId?: string) => Promise<{ success: boolean; error?: string }>;
 
   // Sessions
   listSessions: (params?: any) => Promise<{ success: boolean; data?: any; error?: string }>;
@@ -70,6 +71,8 @@ const electronAPI: ElectronAPI = {
     ipcRenderer.invoke('send-message', sessionKey, message, attachments),
   getChatHistory: (sessionKey, limit) =>
     ipcRenderer.invoke('get-chat-history', sessionKey, limit),
+  abortChat: (sessionKey, runId) =>
+    ipcRenderer.invoke('abort-chat', sessionKey, runId),
 
   listSessions: (params) => ipcRenderer.invoke('list-sessions', params),
   resolveSession: (params) => ipcRenderer.invoke('resolve-session', params),

@@ -374,6 +374,14 @@ export class GatewayClient extends EventEmitter {
     return result.runId;
   }
 
+  async abortChat(sessionKey: string, runId?: string): Promise<void> {
+    const params: any = { sessionKey };
+    if (runId) {
+      params.runId = runId;
+    }
+    await this.request('chat.abort', params);
+  }
+
   async getChatHistory(sessionKey: string, limit: number = 200): Promise<any> {
     return this.request('chat.history', { sessionKey, limit });
   }

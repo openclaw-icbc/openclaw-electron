@@ -94,3 +94,14 @@ export async function createSession(params: any): Promise<any> {
 
   return result.data
 }
+
+/**
+ * 取消聊天
+ */
+export async function abortChat(sessionKey: string, runId?: string): Promise<void> {
+  const result = await window.electronAPI.abortChat(sessionKey, runId)
+
+  if (!result.success) {
+    throw new Error(result.error || '取消聊天失败')
+  }
+}

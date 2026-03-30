@@ -307,6 +307,18 @@ ipcMain.handle('get-chat-history', async (event, sessionKey, limit) => {
   }
 });
 
+ipcMain.handle('abort-chat', async (event, sessionKey, runId) => {
+  if (!gatewayClient) {
+    return { success: false, error: 'Not connected to gateway' };
+  }
+  try {
+    await gatewayClient.abortChat(sessionKey, runId);
+    return { success: true };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+});
+
 ipcMain.handle('list-sessions', async (event, params) => {
   if (!gatewayClient) {
     return { success: false, error: 'Not connected to gateway' };

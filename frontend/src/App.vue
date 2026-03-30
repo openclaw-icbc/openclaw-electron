@@ -63,7 +63,10 @@
             <MessageInput
               v-if="currentSessionKey"
               :disabled="!canSend"
+              :can-abort="canAbort"
+              :is-sending="chatStore.isSending"
               @send="handleSendMessage"
+              @abort="handleAbort"
               ref="messageInputRef"
             />
           </div>
@@ -130,7 +133,11 @@ const sessionStatus = computed(() => {
 })
 
 const canSend = computed(() => {
-  return currentSessionKey.value && connected.value && !loading.value
+  return currentSessionKey.value && connected.value && !loading.value && !chatStore.isSending
+})
+
+const canAbort = computed(() => {
+  return chatStore.isSending && chatStore.currentRunId
 })
 
 // Methods
@@ -141,6 +148,17 @@ async function handleSendMessage(message: string) {
     await sendMessage(currentSessionKey.value, message)
   } catch (error: any) {
     uiStore.showToast(error.message || '发送消息失败', 'error')
+  }
+}
+
+async function handleAbort() {
+  if (!canAbort.value) return
+
+  try {
+    await chatStore.abortCurrentChat()
+    uiStore.showToast('已停止生成', 'success')
+  } catch (error: any) {
+    uiStore.showToast(error.message || '停止生成失败', 'error')
   }
 }
 

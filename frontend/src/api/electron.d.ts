@@ -21,6 +21,7 @@ export interface ElectronAPI {
   // 聊天相关
   sendMessage(sessionKey: string, message: string, attachments?: any[]): Promise<{ success: boolean; runId?: string; error?: string }>
   getChatHistory(sessionKey: string, limit?: number): Promise<{ success: boolean; data?: any; error?: string }>
+  abortChat(sessionKey: string, runId?: string): Promise<{ success: boolean; error?: string }>
 
   // 会话相关
   listSessions(params?: any): Promise<{ success: boolean; data?: any; error?: string }>

@@ -4,7 +4,7 @@
 
 import { defineStore } from 'pinia'
 import type { ChatState, Message, Session } from '@/types/chat'
-import { sendMessage, getChatHistory, listSessions, deleteSession as deleteSessionApi, patchSession } from '@/api/chat'
+import { sendMessage, getChatHistory, listSessions, deleteSession as deleteSessionApi, patchSession, abortChat } from '@/api/chat'
 
 export const useChatStore = defineStore('chat', {
   state: (): ChatState => ({
@@ -14,7 +14,9 @@ export const useChatStore = defineStore('chat', {
     thinkingMessageId: null,
     streamingMessageId: null,
     streamingTimeout: null as number | null,
-    loading: false
+    loading: false,
+    currentRunId: null,
+    isSending: false
   }),
 
   getters: {
@@ -167,15 +169,49 @@ export const useChatStore = defineStore('chat', {
         this.streamingMessageId = null
         this.thinkingMessageId = `thinking-${Date.now()}`
 
+        // 设置发送状态
+        this.isSending = true
+
         // 发送到 Gateway
         const runId = await sendMessage({ sessionKey, message: content, attachments })
         console.log('Message sent, runId:', runId)
+
+        // 保存当前 runId
+        this.currentRunId = runId
 
         return runId
       } catch (error: any) {
         console.error('Failed to send message:', error)
         // 发送失败时清除思考状态
         this.thinkingMessageId = null
+        this.isSending = false
+        this.currentRunId = null
+        throw error
+      }
+    },
+
+    /**
+     * 取消当前聊天
+     */
+    async abortCurrentChat() {
+      if (!this.currentSessionKey) {
+        console.warn('No current session to abort')
+        return false
+      }
+
+      try {
+        await abortChat(this.currentSessionKey, this.currentRunId || undefined)
+        console.log('Chat aborted successfully')
+        
+        // 清除流式状态
+        this.clearStreamingState()
+        this.thinkingMessageId = null
+        this.isSending = false
+        this.currentRunId = null
+        
+        return true
+      } catch (error: any) {
+        console.error('Failed to abort chat:', error)
         throw error
       }
     },
@@ -289,6 +325,8 @@ export const useChatStore = defineStore('chat', {
         clearTimeout(this.streamingTimeout)
         this.streamingTimeout = null
       }
+      // this.isSending = false
+      // this.currentRunId = null
     },
 
     /**

@@ -48,6 +48,8 @@ export interface ChatState {
   streamingMessageId: string | null
   streamingTimeout: number | null
   loading: boolean
+  currentRunId: string | null
+  isSending: boolean
 }
 
 export interface SendMessageParams {

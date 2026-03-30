@@ -7,16 +7,28 @@
         class="textarea pr-16"
         :placeholder="placeholder"
         rows="3"
-        :disabled="disabled"
+        :disabled="disabled || isSending"
         @input="handleInput"
         @keydown="handleKeydown"
       ></textarea>
       <button
+        v-if="!isSending"
         class="btn btn-primary absolute bottom-3 right-3"
         :disabled="!canSend"
         @click="handleSend"
       >
         发送
+      </button>
+      <button
+        v-else
+        class="btn btn-stop absolute bottom-3 right-3"
+        :disabled="!canAbort"
+        @click="handleAbort"
+        title="停止生成"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+          <rect x="6" y="6" width="12" height="12" rx="1" />
+        </svg>
       </button>
     </div>
   </div>
@@ -28,22 +40,27 @@ import { ref, computed, nextTick, watch } from 'vue'
 interface Props {
   disabled?: boolean
   placeholder?: string
+  canAbort?: boolean
+  isSending?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
   disabled: true,
-  placeholder: '选择或创建一个会话后开始聊天 (Ctrl+Enter 发送)'
+  placeholder: '选择或创建一个会话后开始聊天 (Ctrl+Enter 发送)',
+  canAbort: false,
+  isSending: false
 })
 
 const emit = defineEmits<{
   send: [message: string]
+  abort: []
 }>()
 
 const messageText = ref('')
 const textareaRef = ref<HTMLTextAreaElement>()
 
 const canSend = computed(() => {
-  return !props.disabled && messageText.value.trim().length > 0
+  return !props.disabled && !props.isSending && messageText.value.trim().length > 0
 })
 
 function handleInput() {
@@ -74,6 +91,11 @@ function handleSend() {
       textareaRef.value.style.height = 'auto'
     }
   }
+}
+
+function handleAbort() {
+  if (!props.canAbort) return
+  emit('abort')
 }
 
 // 暴露 focus 方法
@@ -131,5 +153,30 @@ watch(() => props.disabled, (newVal, oldVal) => {
 
 .textarea::placeholder {
   color: hsl(var(--muted-foreground));
+}
+
+.btn-stop {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: hsl(var(--destructive));
+  color: white;
+  border: none;
+  border-radius: calc(var(--radius) - 2px);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-stop:hover:not(:disabled) {
+  background: hsl(var(--destructive) / 0.8);
+  transform: scale(1.05);
+}
+
+.btn-stop:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 </style>
