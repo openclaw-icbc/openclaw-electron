@@ -158,7 +158,7 @@ watch(() => props.disabled, (newVal, oldVal) => {
 
 .btn-stop {
   width: auto;
-  min-height: 70px;
+  min-width: 70px;
   height: 32px;
   padding: 0.8px;
   display: flex;
