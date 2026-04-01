@@ -325,8 +325,8 @@ export const useChatStore = defineStore('chat', {
         clearTimeout(this.streamingTimeout)
         this.streamingTimeout = null
       }
-      // this.isSending = false
-      // this.currentRunId = null
+      this.isSending = false
+      this.currentRunId = null
     },
 
     /**
@@ -336,11 +336,11 @@ export const useChatStore = defineStore('chat', {
       if (this.streamingTimeout) {
         clearTimeout(this.streamingTimeout)
       }
-      // Auto-clear streaming state after 3 seconds of no updates
+      // Auto-clear streaming state after 500ms of no updates
       this.streamingTimeout = setTimeout(() => {
         console.log('⏰ Streaming timeout, clearing streaming state')
         this.clearStreamingState()
-      }, 3000) as unknown as number
+      }, 500) as unknown as number
     },
 
     /**

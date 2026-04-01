@@ -29,6 +29,7 @@
         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
           <rect x="6" y="6" width="12" height="12" rx="1" />
         </svg>
+        <span class="ml-1">停止</span>
       </button>
     </div>
   </div>
@@ -156,9 +157,10 @@ watch(() => props.disabled, (newVal, oldVal) => {
 }
 
 .btn-stop {
-  width: 32px;
+  width: auto;
+  min-height: 70px;
   height: 32px;
-  padding: 0;
+  padding: 0.8px;
   display: flex;
   align-items: center;
   justify-content: center;
