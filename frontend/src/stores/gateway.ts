@@ -124,22 +124,47 @@ export const useGatewayStore = defineStore('gateway', {
       const { useChatStore } = await import('./chat')
       const chatStore = useChatStore()
 
+      console.log('🔍 Gateway event received:', event)
+      console.log(`  - event.event: ${event.event}`)
+
       // 处理 chat 事件（OpenClaw Gateway 的流式消息）
       if (event.event === 'chat' && event.payload) {
         const payload = event.payload
-        console.log('Chat event received:', payload)
+        console.log('✅ Processing chat event')
 
         // Handle chat messages from gateway
         chatStore.handleChatMessage(payload)
+        return
       }
 
       // 处理 agent 事件（包含 runId、seq、stream 等字段的事件）
       if (event.event === 'agent' && event.payload) {
         const payload = event.payload
-        console.log('Agent event received:', payload)
+        console.log('✅ Processing agent event')
 
         // 将 agent 事件传递给 chatStore 处理
         chatStore.handleAgentEvent(payload)
+        return
+      }
+
+      // 处理 session.tool 事件（工具事件）
+      if (event.event === 'session.tool' && event.payload) {
+        const payload = event.payload
+        console.log('✅ Processing session.tool event')
+
+        // session.tool 事件实际上也是 agent 事件，使用相同的处理方式
+        chatStore.handleAgentEvent(payload)
+        return
+      }
+
+      // 如果事件类型未知，记录警告
+      console.warn(`⚠️ Unknown or unhandled event type: ${event.event}`)
+      console.warn(`   Payload:`, event.payload)
+
+      // 尝试检查是否是工具相关事件
+      if (event.payload && typeof event.payload === 'object') {
+        console.warn(`   Payload keys:`, Object.keys(event.payload))
+        console.warn(`   Payload details:`, JSON.stringify(event.payload, null, 2).substring(0, 500))
       }
     }
   }
