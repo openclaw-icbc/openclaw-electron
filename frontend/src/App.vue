@@ -137,7 +137,7 @@ const canSend = computed(() => {
 })
 
 const canAbort = computed(() => {
-  return chatStore.isSending && chatStore.currentRunId
+  return !!(chatStore.isSending && chatStore.currentRunId)
 })
 
 // Methods
