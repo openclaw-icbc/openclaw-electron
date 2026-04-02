@@ -38,11 +38,21 @@ const props = withDefaults(defineProps<Props>(), {
 })
 
 const avatarText = computed(() => {
-  return props.message.role === 'user' ? 'U' : 'A'
+  if (props.message.role === 'user') return 'U'
+  if (props.message.role === 'system') return '🔧'
+  return 'A'
 })
 
 const senderName = computed(() => {
-  return props.message.role === 'user' ? '你' : 'Assistant'
+  if (props.message.role === 'user') return '你'
+  if (props.message.role === 'system') {
+    // 如果是工具消息，显示工具名称
+    if (props.message.metadata?.type === 'tool_call' || props.message.metadata?.type === 'tool_result') {
+      return `工具: ${props.message.metadata.toolName || 'unknown'}`
+    }
+    return '系统'
+  }
+  return 'Assistant'
 })
 
 const formattedTime = computed(() => {
@@ -122,6 +132,24 @@ const renderedContent = computed(() => {
 
 .message-user .message-avatar {
   background: hsl(var(--secondary));
+}
+
+.message-system .message-avatar {
+  background: hsl(var(--muted));
+  font-size: 1.25rem;
+}
+
+.message-system .message-content-wrapper {
+  background: hsl(var(--muted) / 0.2);
+  border-radius: calc(var(--radius) - 2px);
+  padding: 0.75rem;
+}
+
+.message-system .message-content {
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 0.8125rem;
+  white-space: pre-wrap;
+  word-break: break-all;
 }
 
 .message-content-wrapper {

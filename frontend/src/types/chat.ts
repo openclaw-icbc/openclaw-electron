@@ -10,7 +10,18 @@ export interface Message {
   createdAt?: number
   status?: 'sending' | 'sent' | 'error' | 'streaming'
   attachments?: Attachment[]
-  metadata?: Record<string, any>
+  metadata?: {
+    type?: 'tool_call' | 'tool_result' | 'text'
+    toolName?: string
+    toolCallId?: string
+    phase?: 'start' | 'update' | 'result'
+    args?: any
+    result?: any
+    partialResult?: any
+    isError?: boolean
+    errorMessage?: string
+    [key: string]: any
+  }
 }
 
 export interface Attachment {

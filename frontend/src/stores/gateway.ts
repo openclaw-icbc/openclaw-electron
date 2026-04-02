@@ -124,12 +124,22 @@ export const useGatewayStore = defineStore('gateway', {
       const { useChatStore } = await import('./chat')
       const chatStore = useChatStore()
 
+      // 处理 chat 事件（OpenClaw Gateway 的流式消息）
       if (event.event === 'chat' && event.payload) {
         const payload = event.payload
         console.log('Chat event received:', payload)
 
         // Handle chat messages from gateway
         chatStore.handleChatMessage(payload)
+      }
+
+      // 处理 agent 事件（包含 runId、seq、stream 等字段的事件）
+      if (event.event === 'agent' && event.payload) {
+        const payload = event.payload
+        console.log('Agent event received:', payload)
+
+        // 将 agent 事件传递给 chatStore 处理
+        chatStore.handleAgentEvent(payload)
       }
     }
   }
