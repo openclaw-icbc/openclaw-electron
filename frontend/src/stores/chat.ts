@@ -371,15 +371,17 @@ export const useChatStore = defineStore('chat', {
     },
 
     /**
-     * 处理 Gateway 发来的 agent 事件（包含 tool 和 assistant 事件）
+     * 处理 Gateway 发来的 agent 事件（包含 tool 和 lifecycle 事件）
      *
-     * Agent 事件格式：
+     * Agent 事件格式（根据 OpenClaw Gateway 协议）：
      * - runId: 用于关联同一响应的所有片段
      * - seq: 序列号，递增
-     * - stream: "assistant" | "tool" | "lifecycle" | "error"
+     * - stream: "tool" | "lifecycle" | "error" | "reasoning" | "attachment"
      * - ts: 时间戳
      * - data: 事件数据
      * - sessionKey: 会话键
+     *
+     * 参考：websocket-integration-guide.md 第 400-526 行
      */
     handleAgentEvent(payload: any) {
       console.log('=== Handling agent event ===', payload)
@@ -417,15 +419,20 @@ export const useChatStore = defineStore('chat', {
       console.log(`📊 Current messages count for session: ${this.messages[targetSessionKey]?.length || 0}`)
 
       // 处理不同的流类型
-      if (stream === 'assistant') {
-        this.handleAssistantStreamEvent({ runId, seq, ts, data, sessionKey: targetSessionKey })
-      } else if (stream === 'tool') {
+      if (stream === 'tool') {
         console.log('🎯 Found tool stream event!')
         this.handleToolStreamEvent({ runId, seq, ts, data, sessionKey: targetSessionKey })
       } else if (stream === 'lifecycle') {
         this.handleLifecycleEvent({ runId, seq, ts, data, sessionKey: targetSessionKey })
       } else if (stream === 'error') {
         console.error('Agent error event:', data)
+        // 可以在这里创建一个错误消息气泡
+        this.createAgentErrorMessage(targetSessionKey, runId, data)
+      } else if (stream === 'reasoning') {
+        console.log('💭 Reasoning event:', data)
+        // 可以选择是否显示推理过程
+      } else if (stream === 'attachment') {
+        console.log('📎 Attachment event:', data)
       } else {
         console.warn(`Unknown stream type: ${stream}`)
         // 尝试打印更多信息以便调试
@@ -434,110 +441,35 @@ export const useChatStore = defineStore('chat', {
           console.warn(`  - data keys:`, Object.keys(data))
         }
       }
-    },
-
-    /**
-     * 处理 assistant 流式事件
-     */
-    handleAssistantStreamEvent(params: { runId: string; seq: number; ts: number; data: any; sessionKey: string }) {
-      const { runId, data, sessionKey, seq } = params
-      const text = data?.text || ''
-      const delta = data?.delta || ''
-
-      console.log(`📝 Assistant stream: runId=${runId}, seq=${seq}, text="${text.substring(0, 50)}..."`)
-
-      // 检查是否包含工具调用标记
-      const hasToolCall = (text || delta).includes('[toolCall]') || (text || delta).includes('[tool_use]')
-
-      if (hasToolCall) {
-        console.log('🔧 Detected tool call marker in assistant stream')
-        // 尝试提取工具调用信息
-        this.extractAndCreateToolMessage(runId, sessionKey, text || delta, seq)
-      }
-
-      // 使用 runId 作为消息ID，所有同一 runId 的 assistant 事件更新同一条消息
-      const messageId = runId
-      const existingIndex = this.messages[sessionKey].findIndex(m => m.id === messageId)
-
-      if (existingIndex !== -1) {
-        // 更新现有消息
-        const currentContent = this.messages[sessionKey][existingIndex].content
-        const newContent = delta ? currentContent + delta : (text || currentContent)
-
-        const updatedMessage = {
-          ...this.messages[sessionKey][existingIndex],
-          content: newContent,
-          timestamp: Date.now(),
-          status: 'streaming' as const
-        }
-        this.messages[sessionKey].splice(existingIndex, 1, updatedMessage)
-        this.streamingMessageId = messageId
-      } else {
-        // 创建新的 assistant 消息
-        console.log(`✨ Creating new assistant message ${messageId}`)
-        this.thinkingMessageId = null
-        this.streamingMessageId = messageId
-
-        const newMessage: Message = {
-          id: messageId,
-          role: 'assistant',
-          content: delta || text,
-          timestamp: Date.now(),
-          status: 'streaming'
-        }
-
-        this.messages[sessionKey].push(newMessage)
-      }
 
       // 触发响应式更新
       this.messages = { ...this.messages }
     },
 
     /**
-     * 从文本中提取工具调用信息并创建工具消息
-     */
-    extractAndCreateToolMessage(runId: string, sessionKey: string, content: string, seq: number) {
-      console.log('🔍 Attempting to extract tool call from content:', content.substring(0, 200))
-
-      // 检查是否已经为这个工具调用创建了消息
-      const toolMessageId = `${runId}-tool-${seq}`
-      const existingToolIndex = this.messages[sessionKey].findIndex(m => m.id === toolMessageId)
-
-      if (existingToolIndex === -1) {
-        // 创建一个临时的工具调用指示消息
-        const toolMessage: Message = {
-          id: toolMessageId,
-          role: 'system',
-          content: '🔧 工具调用中...\n' + content.substring(0, 100),
-          timestamp: Date.now(),
-          status: 'streaming',
-          metadata: {
-            type: 'tool_call' as const,
-            toolName: 'unknown',
-            toolCallId: String(seq),
-            phase: 'start' as const
-          }
-        }
-
-        this.messages[sessionKey].push(toolMessage)
-        console.log(`✅ Created placeholder tool message: ${toolMessageId}`)
-      }
-    },
-
-    /**
      * 处理 tool 流式事件
+     *
+     * 根据 OpenClaw Gateway 协议，工具调用事件的 phases：
+     * - start: 工具调用开始
+     * - progress: 工具执行中
+     * - done: 工具执行完成
+     * - error: 工具执行错误
+     *
+     * 参考：websocket-integration-guide.md 第 438-506 行
      */
     handleToolStreamEvent(params: { runId: string; seq: number; ts: number; data: any; sessionKey: string }) {
-      const { runId, data, sessionKey } = params
-      const phase = data?.phase // 'start' | 'update' | 'result'
-      const name = data?.name || 'unknown_tool'
-      const toolCallId = data?.toolCallId
+      const { runId, data, sessionKey, seq } = params
+      const phase = data?.phase // 'start' | 'progress' | 'done' | 'error'
+      const tool = data?.tool || data?.name || 'unknown_tool'
+      const toolTitle = data?.toolTitle || tool
+      const kind = data?.kind
+      const toolCallId = data?.toolCallId || String(seq)
 
-      console.log(`🔧 Tool stream: runId=${runId}, phase=${phase}, name=${name}, toolCallId=${toolCallId}`)
+      console.log(`🔧🔧🔧 Tool stream: runId=${runId}, seq=${seq}, phase=${phase}, tool=${tool}, toolCallId=${toolCallId}`)
       console.log(`📊 Current messages count: ${this.messages[sessionKey]?.length || 0}`)
 
-      // 使用 runId-tool-toolCallId 作为消息ID，每个工具调用都有独立的消息气泡
-      const messageId = `${runId}-tool-${toolCallId}`
+      // 使用 runId-tool-seq 作为消息ID，每个工具调用都有独立的消息气泡
+      const messageId = `${runId}-tool-${seq}`
       const existingIndex = this.messages[sessionKey].findIndex(m => m.id === messageId)
 
       console.log(`🔍 Looking for message ${messageId}, found at index: ${existingIndex}`)
@@ -548,27 +480,33 @@ export const useChatStore = defineStore('chat', {
           const args = data?.args
           const argsPreview = this.formatToolArgs(args)
 
-          console.log(`✨ Creating new tool message: ${messageId}`)
+          console.log(`✨✨✨ Creating new tool message: ${messageId}`)
+          console.log(`   Content: 🔧 ${toolTitle}`)
 
           const newMessage: Message = {
             id: messageId,
             role: 'system',
-            content: `🔧 调用工具: ${name}\n${argsPreview}`,
+            content: `🔧 ${toolTitle}`,
             timestamp: Date.now(),
             status: 'streaming' as const,
             metadata: {
               type: 'tool_call' as const,
-              toolName: name,
+              toolName: tool,
               toolCallId,
               phase: 'start' as const,
-              args
+              args,
+              toolTitle,
+              kind
             }
           }
 
           this.messages[sessionKey].push(newMessage)
           console.log(`✅ Tool message added, total messages: ${this.messages[sessionKey].length}`)
+
+          // 立即触发响应式更新
+          this.messages = { ...this.messages }
         }
-      } else if (phase === 'update') {
+      } else if (phase === 'progress') {
         // 工具执行过程中的增量更新
         if (existingIndex !== -1) {
           const partialResult = data?.partialResult
@@ -583,60 +521,102 @@ export const useChatStore = defineStore('chat', {
             status: 'streaming' as const,
             metadata: {
               ...this.messages[sessionKey][existingIndex].metadata,
-              phase: 'update' as const,
+              phase: 'progress' as const,
               partialResult
             }
           }
           this.messages[sessionKey].splice(existingIndex, 1, updatedMessage)
           console.log(`✅ Tool message updated`)
+          this.messages = { ...this.messages }
         }
-      } else if (phase === 'result') {
+      } else if (phase === 'done') {
         // 工具执行完成
-        const isError = data?.isError || false
         const result = data?.result
         const resultPreview = this.formatToolResult(result)
 
-        console.log(`🏁 Tool ${name} ${isError ? 'failed' : 'completed'}`)
+        console.log(`🏁🏁🏁 Tool ${tool} completed`)
+        console.log(`   Result preview: ${resultPreview.substring(0, 100)}`)
 
         if (existingIndex !== -1) {
           const updatedMessage = {
             ...this.messages[sessionKey][existingIndex],
-            content: `🔧 工具: ${name}${isError ? ' ❌' : ' ✅'}\n${resultPreview}`,
+            content: `🔧 ${toolTitle} ✅\n${resultPreview}`,
             timestamp: Date.now(),
-            status: (isError ? 'error' : 'sent') as 'error' | 'sent',
+            status: 'sent' as const,
             metadata: {
               ...this.messages[sessionKey][existingIndex].metadata,
-              phase: 'result' as const,
-              result,
-              isError
+              phase: 'done' as const,
+              result
             }
           }
           this.messages[sessionKey].splice(existingIndex, 1, updatedMessage)
           console.log(`✅ Tool message finalized`)
+          this.messages = { ...this.messages }
         } else {
           // 如果没有 start 事件，直接创建结果消息
           console.log(`✨ Creating tool result message (no start): ${messageId}`)
           const newMessage: Message = {
             id: messageId,
             role: 'system',
-            content: `🔧 工具: ${name}${isError ? ' ❌' : ' ✅'}\n${resultPreview}`,
+            content: `🔧 ${toolTitle} ✅\n${resultPreview}`,
             timestamp: Date.now(),
-            status: (isError ? 'error' : 'sent') as 'error' | 'sent',
+            status: 'sent' as const,
             metadata: {
               type: 'tool_result' as const,
-              toolName: name,
+              toolName: tool,
               toolCallId,
               result,
-              isError
+              phase: 'done' as const
             }
           }
           this.messages[sessionKey].push(newMessage)
           console.log(`✅ Tool result message added, total messages: ${this.messages[sessionKey].length}`)
+          this.messages = { ...this.messages }
+        }
+      } else if (phase === 'error') {
+        // 工具执行错误
+        const error = data?.error || data?.errorMessage || '未知错误'
+
+        console.log(`❌ Tool ${tool} error: ${error}`)
+
+        if (existingIndex !== -1) {
+          const updatedMessage = {
+            ...this.messages[sessionKey][existingIndex],
+            content: `🔧 ${toolTitle} ❌\n${error}`,
+            timestamp: Date.now(),
+            status: 'error' as const,
+            metadata: {
+              ...this.messages[sessionKey][existingIndex].metadata,
+              phase: 'error' as const,
+              error
+            }
+          }
+          this.messages[sessionKey].splice(existingIndex, 1, updatedMessage)
+          console.log(`✅ Tool message marked as error`)
+          this.messages = { ...this.messages }
+        } else {
+          // 如果没有 start 事件，直接创建错误消息
+          console.log(`✨ Creating tool error message (no start): ${messageId}`)
+          const newMessage: Message = {
+            id: messageId,
+            role: 'system',
+            content: `🔧 ${toolTitle} ❌\n${error}`,
+            timestamp: Date.now(),
+            status: 'error' as const,
+            metadata: {
+              type: 'tool_error' as const,
+              toolName: tool,
+              toolCallId,
+              error,
+              phase: 'error' as const
+            }
+          }
+          this.messages[sessionKey].push(newMessage)
+          console.log(`✅ Tool error message added, total messages: ${this.messages[sessionKey].length}`)
+          this.messages = { ...this.messages }
         }
       }
 
-      // 触发响应式更新
-      this.messages = { ...this.messages }
       console.log(`🔄 Messages object updated for reactivity`)
     },
 
@@ -724,20 +704,51 @@ export const useChatStore = defineStore('chat', {
     },
 
     /**
+     * 检测消息内容的类型
+     *
+     * 返回值：
+     * - 'tool_call': 包含工具调用标记
+     * - 'tool_result': 包含工具结果标记
+     * - 'thinking': 包含思考标记
+     * - 'text': 纯文本
+     */
+    detectContentType(content: string): 'tool_call' | 'tool_result' | 'thinking' | 'text' {
+      if (!content) return 'text'
+
+      if (content.includes('[工具调用:') || content.includes('[toolCall]')) {
+        return 'tool_call'
+      }
+      if (content.includes('[工具结果]') || content.includes('[toolResult]')) {
+        return 'tool_result'
+      }
+      if (content.includes('[thinking]')) {
+        return 'thinking'
+      }
+      return 'text'
+    },
+
+    /**
      * 处理 OpenClaw Gateway 的流式聊天事件
+     *
+     * 根据 OpenClaw Gateway 协议：
+     * - state: "delta" 表示增量更新，需要追加内容
+     * - state: "final" 表示最终状态，消息完成
+     * - state: "error" 表示错误
+     * - state: "aborted" 表示被中止
+     *
+     * 参考：websocket-integration-guide.md 第 698-773 行
+     *
+     * 消息创建策略（关键修复）：
+     * 1. 检测内容类型的变化
+     * 2. 当内容类型变化时，创建新消息（使用 ${runId}-${contentType} 作为ID）
+     * 3. 当内容类型相同时，追加到现有消息
+     *
+     * 这样可以确保工具调用、工具结果、最终回复分别显示在不同的消息气泡中
      */
     handleStreamingChatEvent(payload: any) {
       const { runId, sessionKey, seq, state, message, stopReason } = payload
 
-      console.log(`📨 Chat event: runId=${runId}, seq=${seq}, state=${state}`)
-
-      // 检查消息内容中是否包含工具相关信息
-      if (message) {
-        const content = this.extractMessageContent(message)
-        if (content.includes('tool') || content.includes('Tool') || content.includes('工具')) {
-          console.log(`🔧 Message contains tool-related content:`, content.substring(0, 100))
-        }
-      }
+      console.log(`📨📨📨 Chat event: runId=${runId}, seq=${seq}, state=${state}`)
 
       const targetSessionKey = sessionKey || this.currentSessionKey
       if (!targetSessionKey) {
@@ -750,98 +761,128 @@ export const useChatStore = defineStore('chat', {
         this.messages = { ...this.messages, [targetSessionKey]: [] }
       }
 
-      // 使用 runId 作为消息ID，确保同一响应的所有片段更新到同一条消息
-      const messageId = runId
+      const newContent = this.extractMessageContent(message)
+      const contentType = this.detectContentType(newContent)
+
+      console.log(`   - New content: "${newContent.substring(0, 50)}..."`)
+      console.log(`   - Content type: ${contentType}`)
+
+      // 使用 runId-contentType 作为消息ID，这样不同类型的消息分开显示
+      const messageId = `${runId}-${contentType}`
+
+      // 查找现有消息
       const existingIndex = this.messages[targetSessionKey].findIndex(m => m.id === messageId)
 
-      if (state === 'delta' || state === 'aborted') {
-        // 增量更新：创建新消息或更新现有消息
+      console.log(`   - Message ID: ${messageId}`)
+      console.log(`   - Existing index: ${existingIndex}`)
+
+      if (state === 'delta') {
+        // 增量更新
+        this.thinkingMessageId = null
+        this.streamingMessageId = messageId
+
         if (existingIndex !== -1) {
-          // 更新现有消息
-          console.log(`📝 Updating message ${messageId} with delta`)
+          // 追加内容到现有消息（相同类型）
+          const currentContent = this.messages[targetSessionKey][existingIndex].content
+          const appendedContent = this.appendTextContent(currentContent, newContent)
+
+          console.log(`📝 Appending to message ${messageId}:`)
+          console.log(`   - Current: "${currentContent.substring(0, 30)}..."`)
+          console.log(`   - New: "${newContent.substring(0, 30)}..."`)
+          console.log(`   - Result: "${appendedContent.substring(0, 30)}..."`)
+
           const updatedMessage = {
             ...this.messages[targetSessionKey][existingIndex],
-            content: this.extractMessageContent(message),
+            content: appendedContent,
             timestamp: message?.timestamp || Date.now(),
             status: 'streaming' as const
           }
           this.messages[targetSessionKey].splice(existingIndex, 1, updatedMessage)
-
-          // 更新流式状态
-          if (state === 'delta') {
-            this.streamingMessageId = messageId
-          }
         } else {
-          // 创建新的流式消息
-          console.log(`✨ Creating new streaming message ${messageId}`)
-          this.thinkingMessageId = null
-          this.streamingMessageId = messageId
+          // 创建新的流式消息（新类型）
+          console.log(`✨ Creating new streaming message ${messageId} (type: ${contentType})`)
 
           const newMessage: Message = {
             id: messageId,
             role: message?.role || 'assistant',
-            content: this.extractMessageContent(message),
+            content: newContent,
             timestamp: message?.timestamp || Date.now(),
-            status: 'streaming'
+            status: 'streaming',
+            metadata: {
+              contentType,
+              seq
+            }
           }
 
           this.messages[targetSessionKey].push(newMessage)
+          console.log(`   - Total messages after push: ${this.messages[targetSessionKey].length}`)
         }
       } else if (state === 'final') {
-        // 最终消息：完成流式状态
-        console.log(`✅ Finalizing message ${messageId}`)
-        if (existingIndex !== -1) {
-          // 更新现有消息为完成状态
-          const content = this.extractMessageContent(message)
-          const updatedMessage = {
-            ...this.messages[targetSessionKey][existingIndex],
-            // 如果有新内容则更新，否则保持原内容
-            content: content || this.messages[targetSessionKey][existingIndex].content,
-            timestamp: message?.timestamp || Date.now(),
-            status: 'sent' as const
-          }
-          this.messages[targetSessionKey].splice(existingIndex, 1, updatedMessage)
-        } else {
-          // 如果消息不存在且有效内容，创建最终消息
-          const content = this.extractMessageContent(message)
-          if (content && content.trim()) {
-            const newMessage: Message = {
-              id: messageId,
-              role: message?.role || 'assistant',
-              content,
-              timestamp: message?.timestamp || Date.now(),
-              status: 'sent'
+        // 最终消息：完成所有相关的流式消息
+        console.log(`✅ Finalizing all messages for run ${runId}`)
+
+        // 完成所有与此 runId 相关的 streaming 消息
+        this.messages[targetSessionKey].forEach((msg, index) => {
+          if (msg.id.startsWith(runId) && msg.status === 'streaming') {
+            const updatedMessage = {
+              ...msg,
+              status: 'sent' as const,
+              timestamp: message?.timestamp || Date.now()
             }
-            this.messages[targetSessionKey].push(newMessage)
+            this.messages[targetSessionKey].splice(index, 1, updatedMessage)
+            console.log(`   - Finalized message: ${msg.id}`)
           }
-        }
+        })
 
         // 清除流式状态
         this.clearStreamingState()
       } else if (state === 'error') {
-        console.error(`❌ Error in message ${messageId}:`, payload.errorMessage)
-        // 错误状态：如果有消息，将其标记为错误状态；否则清除流式状态
-        if (existingIndex !== -1) {
-          const updatedMessage = {
-            ...this.messages[targetSessionKey][existingIndex],
-            status: 'error' as const,
-            metadata: {
-              ...this.messages[targetSessionKey][existingIndex].metadata,
-              errorMessage: payload.errorMessage
+        console.error(`❌ Error in run ${runId}:`, payload.errorMessage)
+        // 错误状态：标记所有相关消息为错误
+        this.messages[targetSessionKey].forEach((msg, index) => {
+          if (msg.id.startsWith(runId)) {
+            const updatedMessage = {
+              ...msg,
+              status: 'error' as const,
+              metadata: {
+                ...msg.metadata,
+                errorMessage: payload.errorMessage
+              }
             }
+            this.messages[targetSessionKey].splice(index, 1, updatedMessage)
           }
-          this.messages[targetSessionKey].splice(existingIndex, 1, updatedMessage)
-        }
+        })
+        this.clearStreamingState()
+      } else if (state === 'aborted') {
+        console.log(`⏹️ Run ${runId} aborted`)
+        // 被中止：标记所有相关消息
+        this.messages[targetSessionKey].forEach((msg, index) => {
+          if (msg.id.startsWith(runId) && msg.status === 'streaming') {
+            const updatedMessage = {
+              ...msg,
+              status: 'sent' as const,
+              metadata: {
+                ...msg.metadata,
+                aborted: true
+              }
+            }
+            this.messages[targetSessionKey].splice(index, 1, updatedMessage)
+          }
+        })
         this.clearStreamingState()
       }
 
       // 触发响应式更新
       this.messages = { ...this.messages }
       console.log(`📊 Total messages for session: ${this.messages[targetSessionKey]?.length}`)
+      console.log(`📊 Message IDs:`, this.messages[targetSessionKey].map(m => m.id))
     },
 
     /**
      * 从消息对象中提取文本内容
+     *
+     * 保留所有内容，包括工具调用标记
+     * 工具调用会通过 agent 事件独立处理，但 chat 事件也可能包含标记
      */
     extractMessageContent(message: any): string {
       if (!message) return ''
@@ -855,8 +896,11 @@ export const useChatStore = defineStore('chat', {
           if (part && typeof part === 'object') {
             if (part.type === 'text' && part.text) return part.text
             if (part.type === 'image_url') return '[图片]'
+            // 保留工具调用标记（与历史记录加载保持一致）
             if (part.type === 'tool_use' || part.type === 'tool_use_call') return `[工具调用: ${part.name || part.id || 'unknown'}]`
             if (part.type === 'tool_result') return `[工具结果]`
+            // 保留 thinking 标记
+            if (part.type === 'thinking') return `[thinking]`
             if (part.content) return part.content
             if (part.text) return part.text
             if (part.type) return `[${part.type}]`
@@ -867,6 +911,58 @@ export const useChatStore = defineStore('chat', {
       }
 
       return content
+    },
+
+    /**
+     * 追加文本内容，处理重复内容
+     *
+     * 根据协议，增量更新时可能出现：
+     * 1. 完整内容（直接返回）
+     * 2. 增量内容（需要追加）
+     *
+     * 参考：websocket-integration-guide.md 第 994-999 行
+     */
+    appendTextContent(previous: string, next: string): string {
+      if (!previous) return next
+      if (!next) return previous
+
+      // 如果新内容包含旧内容，返回新内容（完整替换）
+      if (next.startsWith(previous)) {
+        return next
+      }
+
+      // 如果旧内容包含新内容，可能是重复事件，返回旧内容
+      if (previous.startsWith(next)) {
+        return previous
+      }
+
+      // 否则追加（真正的新内容）
+      return previous + next
+    },
+
+    /**
+     * 创建 Agent 错误消息
+     */
+    createAgentErrorMessage(sessionKey: string, runId: string, errorData: any) {
+      const errorMessage: Message = {
+        id: `${runId}-error`,
+        role: 'system',
+        content: `❌ Agent 执行错误\n${errorData?.error || errorData?.message || '未知错误'}`,
+        timestamp: Date.now(),
+        status: 'error',
+        metadata: {
+          type: 'agent_error',
+          runId,
+          errorData
+        }
+      }
+
+      if (!this.messages[sessionKey]) {
+        this.messages[sessionKey] = []
+      }
+
+      this.messages[sessionKey].push(errorMessage)
+      this.messages = { ...this.messages }
     },
 
     /**

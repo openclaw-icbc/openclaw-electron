@@ -11,15 +11,21 @@ export interface Message {
   status?: 'sending' | 'sent' | 'error' | 'streaming'
   attachments?: Attachment[]
   metadata?: {
-    type?: 'tool_call' | 'tool_result' | 'text'
+    type?: 'tool_call' | 'tool_result' | 'tool_error' | 'agent_error' | 'text'
     toolName?: string
     toolCallId?: string
-    phase?: 'start' | 'update' | 'result'
+    toolTitle?: string
+    phase?: 'start' | 'progress' | 'done' | 'error'
     args?: any
     result?: any
     partialResult?: any
+    error?: any
     isError?: boolean
     errorMessage?: string
+    aborted?: boolean
+    kind?: string
+    runId?: string
+    errorData?: any
     [key: string]: any
   }
 }

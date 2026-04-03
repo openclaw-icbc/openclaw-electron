@@ -124,13 +124,17 @@ export const useGatewayStore = defineStore('gateway', {
       const { useChatStore } = await import('./chat')
       const chatStore = useChatStore()
 
-      console.log('🔍 Gateway event received:', event)
+      console.log('🔍🔍🔍 Gateway event received:', event.event)
       console.log(`  - event.event: ${event.event}`)
+      console.log(`  - event.payload keys:`, event.payload ? Object.keys(event.payload) : 'null')
 
       // 处理 chat 事件（OpenClaw Gateway 的流式消息）
       if (event.event === 'chat' && event.payload) {
         const payload = event.payload
-        console.log('✅ Processing chat event')
+        console.log('✅✅✅ Processing chat event')
+        console.log(`   - runId: ${payload.runId}`)
+        console.log(`   - state: ${payload.state}`)
+        console.log(`   - seq: ${payload.seq}`)
 
         // Handle chat messages from gateway
         chatStore.handleChatMessage(payload)
@@ -140,7 +144,10 @@ export const useGatewayStore = defineStore('gateway', {
       // 处理 agent 事件（包含 runId、seq、stream 等字段的事件）
       if (event.event === 'agent' && event.payload) {
         const payload = event.payload
-        console.log('✅ Processing agent event')
+        console.log('✅✅✅ Processing agent event')
+        console.log(`   - runId: ${payload.runId}`)
+        console.log(`   - stream: ${payload.stream}`)
+        console.log(`   - seq: ${payload.seq}`)
 
         // 将 agent 事件传递给 chatStore 处理
         chatStore.handleAgentEvent(payload)
@@ -150,7 +157,9 @@ export const useGatewayStore = defineStore('gateway', {
       // 处理 session.tool 事件（工具事件）
       if (event.event === 'session.tool' && event.payload) {
         const payload = event.payload
-        console.log('✅ Processing session.tool event')
+        console.log('✅✅✅ Processing session.tool event')
+        console.log(`   - runId: ${payload.runId}`)
+        console.log(`   - stream: ${payload.stream}`)
 
         // session.tool 事件实际上也是 agent 事件，使用相同的处理方式
         chatStore.handleAgentEvent(payload)

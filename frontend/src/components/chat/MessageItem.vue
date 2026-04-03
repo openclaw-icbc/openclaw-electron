@@ -83,6 +83,25 @@ const renderedContent = computed(() => {
     }).filter(Boolean).join('')
   }
 
+  // 处理工具调用和思考标记，使其更醒目
+  content = content
+    // 处理 [工具调用: xxx]
+    .replace(/\[工具调用:\s*([^\]]+)\]/g, (match, toolName) => {
+      return `<span class="tool-call-badge">🔧 调用工具: ${toolName}</span>`
+    })
+    // 处理 [工具结果]
+    .replace(/\[工具结果\]/g, '<span class="tool-result-badge">📋 工具结果</span>')
+    // 处理 [thinking]
+    .replace(/\[thinking\]/g, '<span class="thinking-badge">💭 思考中...</span>')
+    // 处理 [toolCall]...[/toolCall]
+    .replace(/\[toolCall\](.*?)\[\/toolCall\]/g, (match, toolName) => {
+      return `<span class="tool-call-badge">🔧 调用工具: ${toolName}</span>`
+    })
+    // 处理 [toolResult]
+    .replace(/\[toolResult\]/g, '<span class="tool-result-badge">📋 工具结果</span>')
+    // 处理单独的 [toolCall]（没有闭合标签）
+    .replace(/\[toolCall\]/g, '<span class="tool-call-badge">🔧 工具调用</span>')
+
   // 如果是流式消息且内容为空，显示输入提示
   if (props.isStreaming && !content) {
     return '<span class="streaming-cursor">▊</span>'
@@ -217,6 +236,43 @@ const renderedContent = computed(() => {
 .message-content :deep(a) {
   color: hsl(var(--primary));
   text-decoration: underline;
+}
+
+/* 工具调用和思考标记样式 */
+.message-content :deep(.tool-call-badge) {
+  display: inline-block;
+  background: hsl(var(--primary) / 0.1);
+  border: 1px solid hsl(var(--primary) / 0.3);
+  color: hsl(var(--primary));
+  padding: 0.125rem 0.375rem;
+  border-radius: 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  margin: 0.25rem 0;
+  white-space: nowrap;
+}
+
+.message-content :deep(.tool-result-badge) {
+  display: inline-block;
+  background: hsl(142, 76%, 36% / 0.1);
+  border: 1px solid hsl(142, 76%, 36% / 0.3);
+  color: hsl(142, 76%, 36%);
+  padding: 0.125rem 0.375rem;
+  border-radius: 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  margin: 0.25rem 0;
+}
+
+.message-content :deep(.thinking-badge) {
+  display: inline-block;
+  background: hsl(var(--muted) / 0.3);
+  color: hsl(var(--muted-foreground));
+  padding: 0.125rem 0.375rem;
+  border-radius: 0.25rem;
+  font-size: 0.75rem;
+  font-style: italic;
+  margin: 0.25rem 0;
 }
 
 .streaming-cursor {
