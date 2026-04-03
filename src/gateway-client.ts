@@ -230,7 +230,7 @@ export class GatewayClient extends EventEmitter {
         signedAt: signedAtMs,
         nonce: this.connectNonce || '',
       },
-      caps: [],
+      caps: ['tool-events'],
       auth,
       userAgent: `openclaw-electron/1.0.0 (${process.platform})`,
       locale: 'en-US',

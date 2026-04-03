@@ -424,6 +424,10 @@ export const useChatStore = defineStore('chat', {
         this.handleToolStreamEvent({ runId, seq, ts, data, sessionKey: targetSessionKey })
       } else if (stream === 'lifecycle') {
         this.handleLifecycleEvent({ runId, seq, ts, data, sessionKey: targetSessionKey })
+      } else if (stream === 'assistant') {
+        // 处理 assistant stream - 包含增量文本内容
+        console.log('📝 Found assistant stream event!')
+        this.handleAssistantStreamEvent({ runId, seq, ts, data, sessionKey: targetSessionKey })
       } else if (stream === 'error') {
         console.error('Agent error event:', data)
         // 可以在这里创建一个错误消息气泡
@@ -440,6 +444,89 @@ export const useChatStore = defineStore('chat', {
           console.warn(`  - data.type: ${data.type}`)
           console.warn(`  - data keys:`, Object.keys(data))
         }
+      }
+
+      // 触发响应式更新
+      this.messages = { ...this.messages }
+    },
+
+    /**
+     * 处理 assistant 流式事件
+     *
+     * Assistant stream 包含增量文本内容，需要显示为消息
+     * 根据 OpenClaw Gateway 的实际行为，assistant 事件包含文本增量
+     */
+    handleAssistantStreamEvent(params: { runId: string; seq: number; ts: number; data: any; sessionKey: string }) {
+      const { runId, data, sessionKey, seq } = params
+      const text = data?.text || ''
+      const delta = data?.delta || ''
+
+      console.log(`📝 Assistant stream: runId=${runId}, seq=${seq}`)
+      console.log(`   - text: "${text.substring(0, 50)}..."`)
+      console.log(`   - delta: "${delta.substring(0, 50)}..."`)
+
+      // 确保消息数组存在
+      if (!this.messages[sessionKey]) {
+        this.messages = { ...this.messages, [sessionKey]: [] }
+      }
+
+      // 使用 delta 或 text 作为内容
+      const content = delta || text
+
+      if (!content) {
+        console.log(`   - No content to display`)
+        return
+      }
+
+      // 检测内容类型
+      const contentType = this.detectContentType(content)
+      console.log(`   - Content type: ${contentType}`)
+
+      // 使用 runId-contentType 作为消息ID
+      const messageId = `${runId}-${contentType}`
+      const existingIndex = this.messages[sessionKey].findIndex(m => m.id === messageId)
+
+      console.log(`   - Message ID: ${messageId}`)
+      console.log(`   - Existing index: ${existingIndex}`)
+
+      // 清除思考状态，设置流式状态
+      this.thinkingMessageId = null
+      this.streamingMessageId = messageId
+
+      if (existingIndex !== -1) {
+        // 追加内容到现有消息
+        const currentContent = this.messages[sessionKey][existingIndex].content
+        const appendedContent = this.appendTextContent(currentContent, content)
+
+        console.log(`   - Appending: "${currentContent.substring(0, 30)}..." + "${content.substring(0, 30)}..."`)
+
+        const updatedMessage = {
+          ...this.messages[sessionKey][existingIndex],
+          content: appendedContent,
+          timestamp: Date.now(),
+          status: 'streaming' as const
+        }
+        this.messages[sessionKey].splice(existingIndex, 1, updatedMessage)
+      } else {
+        // 创建新消息
+        console.log(`✨✨✨ Creating new message from assistant stream: ${messageId}`)
+        console.log(`   - Content: "${content.substring(0, 50)}..."`)
+
+        const newMessage: Message = {
+          id: messageId,
+          role: 'assistant',
+          content: content,
+          timestamp: Date.now(),
+          status: 'streaming',
+          metadata: {
+            contentType,
+            seq,
+            source: 'assistant_stream'
+          }
+        }
+
+        this.messages[sessionKey].push(newMessage)
+        console.log(`   - Total messages: ${this.messages[sessionKey].length}`)
       }
 
       // 触发响应式更新
@@ -764,8 +851,10 @@ export const useChatStore = defineStore('chat', {
       const newContent = this.extractMessageContent(message)
       const contentType = this.detectContentType(newContent)
 
-      console.log(`   - New content: "${newContent.substring(0, 50)}..."`)
+      console.log(`   - Raw message:`, JSON.stringify(message).substring(0, 200))
+      console.log(`   - Extracted content: "${newContent.substring(0, 100)}..."`)
       console.log(`   - Content type: ${contentType}`)
+      console.log(`   - Will use message ID: ${runId}-${contentType}`)
 
       // 使用 runId-contentType 作为消息ID，这样不同类型的消息分开显示
       const messageId = `${runId}-${contentType}`
@@ -774,7 +863,8 @@ export const useChatStore = defineStore('chat', {
       const existingIndex = this.messages[targetSessionKey].findIndex(m => m.id === messageId)
 
       console.log(`   - Message ID: ${messageId}`)
-      console.log(`   - Existing index: ${existingIndex}`)
+      console.log(`   - Existing index: ${existingIndex} (${existingIndex === -1 ? 'will create new' : 'will update'})`)
+      console.log(`   - Current messages:`, this.messages[targetSessionKey].map(m => ({ id: m.id, content: m.content.substring(0, 30) })))
 
       if (state === 'delta') {
         // 增量更新
@@ -800,7 +890,8 @@ export const useChatStore = defineStore('chat', {
           this.messages[targetSessionKey].splice(existingIndex, 1, updatedMessage)
         } else {
           // 创建新的流式消息（新类型）
-          console.log(`✨ Creating new streaming message ${messageId} (type: ${contentType})`)
+          console.log(`✨✨✨ Creating new streaming message ${messageId} (type: ${contentType})`)
+          console.log(`   - Content: "${newContent.substring(0, 50)}..."`)
 
           const newMessage: Message = {
             id: messageId,
@@ -816,6 +907,7 @@ export const useChatStore = defineStore('chat', {
 
           this.messages[targetSessionKey].push(newMessage)
           console.log(`   - Total messages after push: ${this.messages[targetSessionKey].length}`)
+          console.log(`   - All message IDs:`, this.messages[targetSessionKey].map(m => m.id))
         }
       } else if (state === 'final') {
         // 最终消息：完成所有相关的流式消息
