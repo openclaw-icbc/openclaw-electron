@@ -264,6 +264,7 @@ OpenClaw WebSocket 协议使用三种帧类型：
 | `agent` | Agent 运行事件（包括工具调用） | 流式推送 |
 | `chat.side_result` | 副作用结果 | 按需推送 |
 | `session.tool` | 会话工具事件 | 流式推送 |
+| `session.message` | 会话消息事件 | 按需推送 |
 | `heartbeat` | 心跳 | 每 30 秒 |
 | `tick` | 时钟滴答 | 每 30 秒 |
 | `health` | 健康状态 | 定期推送 |
@@ -272,6 +273,7 @@ OpenClaw WebSocket 协议使用三种帧类型：
 | `device.pair.requested` | 设备配对请求 | 按需推送 |
 | `device.pair.resolved` | 设备配对解决 | 按需推送 |
 | `node.pair.requested` | 节点配对请求 | 按需推送 |
+| `node.pair.resolved` | 节点配对解决 | 按需推送 |
 | `exec.approval.requested` | 执行批准请求 | 按需推送 |
 | `exec.approval.resolved` | 执行批准解决 | 按需推送 |
 | `plugin.approval.requested` | 插件批准请求 | 按需推送 |
@@ -554,6 +556,40 @@ function handleChatEvent(payload) {
 }
 ```
 
+### `session.message` - 会话消息事件
+
+当有新消息添加到会话转录时推送，用于后加入的客户端获取完整消息历史：
+
+```json
+{
+  "type": "event",
+  "event": "session.message",
+  "payload": {
+    "sessionKey": "main",
+    "message": {
+      "id": "message-id",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "这是完整的消息内容"
+        }
+      ],
+      "timestamp": 1713456789000
+    },
+    "messageId": "message-id",
+    "messageSeq": 10,
+    "session": {
+      "sessionId": "session-uuid",
+      "label": "主会话",
+      "thinkingLevel": "high",
+      "modelProvider": "anthropic",
+      "model": "claude-sonnet-4.6"
+    }
+  }
+}
+```
+
 ### `session.tool` - 会话工具事件
 
 与 `agent` 事件类似，但包含会话快照信息，用于后加入的客户端：
@@ -654,8 +690,38 @@ function handleChatEvent(payload) {
   "event": "exec.approval.requested",
   "payload": {
     "id": "approval-123",
-    "command": "rm -rf /path",
-    "execHost": "local",
+    "request": {
+      "command": "rm -rf /path",
+      "commandArgv": ["rm", "-rf", "/path"],
+      "commandPreview": "rm -rf /path",
+      "envKeys": ["HOME", "PATH"],
+      "systemRunBinding": {
+        "argv": ["rm", "-rf", "/path"],
+        "cwd": "/home/user",
+        "commandText": "rm -rf /path"
+      },
+      "systemRunPlan": {
+        "argv": ["rm", "-rf", "/path"],
+        "cwd": "/home/user",
+        "commandText": "rm -rf /path",
+        "commandPreview": "rm -rf /path",
+        "agentId": "agent-id",
+        "sessionKey": "main"
+      },
+      "cwd": "/home/user",
+      "nodeId": "node-id",
+      "host": "local",
+      "security": "full",
+      "ask": "always",
+      "allowedDecisions": ["allow-once", "deny"],
+      "agentId": "agent-id",
+      "resolvedPath": "/usr/bin/rm",
+      "sessionKey": "main",
+      "turnSourceChannel": "telegram",
+      "turnSourceTo": "user-id",
+      "turnSourceAccountId": "account-id",
+      "turnSourceThreadId": 123
+    },
     "createdAtMs": 1713456789000,
     "expiresAtMs": 1713456889000
   }
@@ -670,11 +736,128 @@ function handleChatEvent(payload) {
   "event": "exec.approval.resolved",
   "payload": {
     "id": "approval-123",
-    "approved": true,
-    "resolvedAtMs": 1713456790000
+    "decision": "allow-once",
+    "resolvedBy": "operator",
+    "ts": 1713456790000,
+    "request": {
+      "command": "rm -rf /path",
+      "commandArgv": ["rm", "-rf", "/path"],
+      "cwd": "/home/user",
+      "host": "local",
+      "agentId": "agent-id",
+      "sessionKey": "main"
+    }
   }
 }
 ```
+
+**decision 字段的可能值：**
+- `allow-once`: 允许一次
+- `allow-always`: 允许总是
+- `deny`: 拒绝
+
+#### `plugin.approval.requested` - 插件批准请求
+
+```json
+{
+  "type": "event",
+  "event": "plugin.approval.requested",
+  "payload": {
+    "id": "plugin-approval-123",
+    "request": {
+      "pluginId": "plugin-id",
+      "title": "需要批准的敏感操作",
+      "description": "此操作需要用户批准才能继续执行",
+      "severity": "warning",
+      "toolName": "sensitive-tool",
+      "toolCallId": "tool-call-id",
+      "agentId": "agent-id",
+      "sessionKey": "main",
+      "turnSourceChannel": "telegram",
+      "turnSourceTo": "user-id",
+      "turnSourceAccountId": "account-id",
+      "turnSourceThreadId": 123
+    },
+    "createdAtMs": 1713456789000,
+    "expiresAtMs": 1713456889000
+  }
+}
+```
+
+**severity 字段的可能值：**
+- `info`: 信息
+- `warning`: 警告
+- `critical`: 严重
+
+#### `plugin.approval.resolved` - 插件批准解决
+
+```json
+{
+  "type": "event",
+  "event": "plugin.approval.resolved",
+  "payload": {
+    "id": "plugin-approval-123",
+    "decision": "allow-once",
+    "resolvedBy": "operator",
+    "ts": 1713456790000,
+    "request": {
+      "pluginId": "plugin-id",
+      "title": "需要批准的敏感操作",
+      "description": "此操作需要用户批准才能继续执行"
+    }
+  }
+}
+```
+
+### 节点配对事件
+
+#### `node.pair.requested` - 节点配对请求
+
+```json
+{
+  "type": "event",
+  "event": "node.pair.requested",
+  "payload": {
+    "requestId": "pair-123",
+    "nodeId": "node-uuid",
+    "displayName": "我的节点",
+    "platform": "linux",
+    "version": "1.0.0",
+    "coreVersion": "2026.04.03",
+    "uiVersion": "1.0.0",
+    "deviceFamily": "desktop",
+    "modelIdentifier": "x86_64",
+    "caps": ["bash", "python"],
+    "commands": ["bash", "python"],
+    "permissions": {
+      "bash": true,
+      "python": false
+    },
+    "remoteIp": "192.168.1.100",
+    "silent": false,
+    "ts": 1713456789000
+  }
+}
+```
+
+#### `node.pair.resolved` - 节点配对解决
+
+```json
+{
+  "type": "event",
+  "event": "node.pair.resolved",
+  "payload": {
+    "requestId": "pair-123",
+    "nodeId": "node-uuid",
+    "decision": "approved",
+    "ts": 1713456790000
+  }
+}
+```
+
+**decision 字段的可能值：**
+- `approved`: 已批准
+- `rejected`: 已拒绝
 
 ### 设备配对事件
 
@@ -687,11 +870,41 @@ function handleChatEvent(payload) {
   "payload": {
     "requestId": "pair-123",
     "deviceId": "device-uuid",
+    "publicKey": "public-key-string",
     "displayName": "我的 iPhone",
-    "platform": "ios"
+    "platform": "ios",
+    "deviceFamily": "iPhone",
+    "clientId": "control-ui",
+    "clientMode": "webchat",
+    "role": "operator",
+    "roles": ["operator"],
+    "scopes": ["operator.read", "operator.write"],
+    "remoteIp": "192.168.1.100",
+    "silent": false,
+    "isRepair": false,
+    "ts": 1713456789000
   }
 }
 ```
+
+#### `device.pair.resolved` - 设备配对解决
+
+```json
+{
+  "type": "event",
+  "event": "device.pair.resolved",
+  "payload": {
+    "requestId": "pair-123",
+    "deviceId": "device-uuid",
+    "decision": "approved",
+    "ts": 1713456790000
+  }
+}
+```
+
+**decision 字段的可能值：**
+- `approved`: 已批准
+- `rejected`: 已拒绝
 
 ---
 
@@ -1375,6 +1588,6 @@ A: `content` 是一个数组，包含多个内容块：
 
 ---
 
-**文档版本：** 1.0.0  
-**最后更新：** 2026-04-03  
+**文档版本：** 1.1.0  
+**最后更新：** 2026-04-08  
 **协议版本：** 3
