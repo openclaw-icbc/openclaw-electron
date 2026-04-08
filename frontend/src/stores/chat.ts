@@ -16,7 +16,9 @@ export const useChatStore = defineStore('chat', {
     streamingTimeout: null as number | null,
     loading: false,
     currentRunId: null,
-    isSending: false
+    isSending: false,
+    // 事件去重：跟踪已处理的事件 { "runId-seq": true }
+    processedEvents: {} as Record<string, boolean>
   }),
 
   getters: {
@@ -33,6 +35,49 @@ export const useChatStore = defineStore('chat', {
   },
 
   actions: {
+    /**
+     * 检查事件是否已处理（去重机制）
+     * @param eventType 事件类型 ('chat' | 'agent')
+     * @returns true表示事件已处理，应该跳过；false表示事件未处理，应该处理
+     *
+     * 重要：所有相关事件（chat、agent-assistant等）都应该使用统一的去重key
+     * 以避免相同内容被多次处理
+     */
+    isEventProcessed(eventType: string, runId: string, seq: number): boolean {
+      // 统一使用 runId-seq 作为去重key，忽略eventType
+      // 因为chat事件和agent事件（stream='assistant'）可能包含相同内容
+      const key = `${runId}-${seq}`
+
+      if (this.processedEvents[key]) {
+        console.log(`⚠️ Event already processed, skipping: ${key} (type: ${eventType})`)
+        return true
+      }
+
+      // 标记为已处理
+      this.processedEvents[key] = true
+
+      // 清理旧的事件记录（只保留最近1000个）
+      const keys = Object.keys(this.processedEvents)
+      if (keys.length > 1000) {
+        const toDelete = keys.slice(0, keys.length - 1000)
+        toDelete.forEach(k => delete this.processedEvents[k])
+      }
+
+      console.log(`✅ Event marked as processed: ${key} (type: ${eventType})`)
+      return false
+    },
+
+    /**
+     * 清理已完成run的所有事件记录
+     */
+    clearProcessedEventsForRun(runId: string) {
+      Object.keys(this.processedEvents).forEach(key => {
+        if (key.startsWith(`${runId}-`)) {
+          delete this.processedEvents[key]
+        }
+      })
+    },
+
     /**
      * 加载会话列表
      */
@@ -159,11 +204,10 @@ export const useChatStore = defineStore('chat', {
         }
 
         if (!this.messages[sessionKey]) {
-          this.messages = { ...this.messages, [sessionKey]: [] }
+          this.messages[sessionKey] = []
         }
         this.messages[sessionKey].push(userMessage)
-        // Force reactivity
-        this.messages = { ...this.messages }
+        // Push操作已经触发了响应式更新，不需要额外的force reactivity
 
         // 清除之前的流式状态，设置思考状态
         this.streamingMessageId = null
@@ -390,8 +434,23 @@ export const useChatStore = defineStore('chat', {
       console.log(`📋 Agent event details:`)
       console.log(`  - runId: ${runId}`)
       console.log(`  - stream: ${stream}`)
+      console.log(`  - seq: ${seq}`)
       console.log(`  - payload.sessionKey: ${payloadSessionKey}`)
       console.log(`  - this.currentSessionKey: ${this.currentSessionKey}`)
+
+      // 重要：agent事件的assistant流与chat事件重复，直接跳过
+      // chat事件已经处理了文本内容，agent的assistant流会导致重复
+      if (stream === 'assistant') {
+        console.log(`   - ⚠️ Ignoring agent assistant stream (duplicate of chat event)`)
+        console.log(`   - Chat events should handle text content, not agent assistant stream`)
+        return
+      }
+
+      // 事件去重检查（对其他流类型）
+      if (this.isEventProcessed(`agent-${stream}`, runId, seq)) {
+        console.log(`   - Skipping duplicate ${stream} event ${runId}-${seq}`)
+        return
+      }
 
       // 打印完整的 payload 结构以便调试
       if (!stream) {
@@ -410,10 +469,10 @@ export const useChatStore = defineStore('chat', {
 
       console.log(`  - targetSessionKey: ${targetSessionKey}`)
 
-      // 确保消息数组存在
+      // 确保消息数组存在（不触发响应式更新）
       if (!this.messages[targetSessionKey]) {
         console.log(`Creating new message array for session: ${targetSessionKey}`)
-        this.messages = { ...this.messages, [targetSessionKey]: [] }
+        this.messages[targetSessionKey] = []
       }
 
       console.log(`📊 Current messages count for session: ${this.messages[targetSessionKey]?.length || 0}`)
@@ -446,8 +505,8 @@ export const useChatStore = defineStore('chat', {
         }
       }
 
-      // 触发响应式更新
-      this.messages = { ...this.messages }
+      // 只在真正修改了messages后才触发响应式更新
+      // 这里不做批量更新，让各个处理方法自己决定何时更新
     },
 
     /**
@@ -455,6 +514,9 @@ export const useChatStore = defineStore('chat', {
      *
      * Assistant stream 包含增量文本内容，需要显示为消息
      * 根据 OpenClaw Gateway 的实际行为，assistant 事件包含文本增量
+     *
+     * 注意：此方法需要与handleStreamingChatEvent配合，避免创建重复消息
+     * 统一使用${runId}-text作为消息ID，与chat事件保持一致
      */
     handleAssistantStreamEvent(params: { runId: string; seq: number; ts: number; data: any; sessionKey: string }) {
       const { runId, data, sessionKey, seq } = params
@@ -467,7 +529,7 @@ export const useChatStore = defineStore('chat', {
 
       // 确保消息数组存在
       if (!this.messages[sessionKey]) {
-        this.messages = { ...this.messages, [sessionKey]: [] }
+        this.messages[sessionKey] = []
       }
 
       // 使用 delta 或 text 作为内容
@@ -478,20 +540,18 @@ export const useChatStore = defineStore('chat', {
         return
       }
 
-      // 检测内容类型
-      const contentType = this.detectContentType(content)
-      console.log(`   - Content type: ${contentType}`)
-
-      // 使用 runId-contentType 作为消息ID
-      const messageId = `${runId}-${contentType}`
+      // 统一使用 ${runId}-text 作为消息ID（与handleStreamingChatEvent保持一致）
+      const messageId = `${runId}-text`
       const existingIndex = this.messages[sessionKey].findIndex(m => m.id === messageId)
 
       console.log(`   - Message ID: ${messageId}`)
       console.log(`   - Existing index: ${existingIndex}`)
 
-      // 清除思考状态，设置流式状态
+      // 清除思考状态，设置流式状态（仅当当前运行仍在进行时）
       this.thinkingMessageId = null
-      this.streamingMessageId = messageId
+      if (this.currentRunId === runId) {
+        this.streamingMessageId = messageId
+      }
 
       if (existingIndex !== -1) {
         // 追加内容到现有消息
@@ -519,7 +579,7 @@ export const useChatStore = defineStore('chat', {
           timestamp: Date.now(),
           status: 'streaming',
           metadata: {
-            contentType,
+            contentType: 'text',
             seq,
             source: 'assistant_stream'
           }
@@ -529,8 +589,7 @@ export const useChatStore = defineStore('chat', {
         console.log(`   - Total messages: ${this.messages[sessionKey].length}`)
       }
 
-      // 触发响应式更新
-      this.messages = { ...this.messages }
+      // 使用splice触发响应式更新，但不需要创建新的messages对象
     },
 
     /**
@@ -538,15 +597,16 @@ export const useChatStore = defineStore('chat', {
      *
      * 根据 OpenClaw Gateway 协议，工具调用事件的 phases：
      * - start: 工具调用开始
-     * - progress: 工具执行中
-     * - done: 工具执行完成
-     * - error: 工具执行错误
+     * - update: 工具执行中（增量更新）
+     * - result: 工具执行完成（包含最终结果或错误）
+     *
+     * 工具执行错误通过 result 阶段的 data.isError 字段标识
      *
      * 参考：websocket-integration-guide.md 第 438-506 行
      */
     handleToolStreamEvent(params: { runId: string; seq: number; ts: number; data: any; sessionKey: string }) {
       const { runId, data, sessionKey, seq } = params
-      const phase = data?.phase // 'start' | 'progress' | 'done' | 'error'
+      const phase = data?.phase // 'start' | 'update' | 'result'
       const tool = data?.tool || data?.name || 'unknown_tool'
       const toolTitle = data?.toolTitle || tool
       const kind = data?.kind
@@ -554,6 +614,11 @@ export const useChatStore = defineStore('chat', {
 
       console.log(`🔧🔧🔧 Tool stream: runId=${runId}, seq=${seq}, phase=${phase}, tool=${tool}, toolCallId=${toolCallId}`)
       console.log(`📊 Current messages count: ${this.messages[sessionKey]?.length || 0}`)
+
+      // 确保消息数组存在
+      if (!this.messages[sessionKey]) {
+        this.messages[sessionKey] = []
+      }
 
       // 使用 runId-tool-seq 作为消息ID，每个工具调用都有独立的消息气泡
       const messageId = `${runId}-tool-${seq}`
@@ -565,15 +630,13 @@ export const useChatStore = defineStore('chat', {
         // 工具开始执行
         if (existingIndex === -1) {
           const args = data?.args
-          const argsPreview = this.formatToolArgs(args)
 
           console.log(`✨✨✨ Creating new tool message: ${messageId}`)
-          console.log(`   Content: 🔧 ${toolTitle}`)
 
           const newMessage: Message = {
             id: messageId,
             role: 'system',
-            content: `🔧 ${toolTitle}`,
+            content: '', // ToolCallItem组件负责所有展示
             timestamp: Date.now(),
             status: 'streaming' as const,
             metadata: {
@@ -589,122 +652,79 @@ export const useChatStore = defineStore('chat', {
 
           this.messages[sessionKey].push(newMessage)
           console.log(`✅ Tool message added, total messages: ${this.messages[sessionKey].length}`)
-
-          // 立即触发响应式更新
-          this.messages = { ...this.messages }
         }
-      } else if (phase === 'progress') {
+      } else if (phase === 'update') {
         // 工具执行过程中的增量更新
         if (existingIndex !== -1) {
           const partialResult = data?.partialResult
-          const resultPreview = this.formatToolResult(partialResult)
 
           console.log(`📝 Updating tool message: ${messageId}`)
 
           const updatedMessage = {
             ...this.messages[sessionKey][existingIndex],
-            content: `${this.messages[sessionKey][existingIndex].content}\n${resultPreview}`,
+            content: '', // ToolCallItem组件负责所有展示
             timestamp: Date.now(),
             status: 'streaming' as const,
             metadata: {
               ...this.messages[sessionKey][existingIndex].metadata,
-              phase: 'progress' as const,
+              phase: 'update' as const,
               partialResult
             }
           }
           this.messages[sessionKey].splice(existingIndex, 1, updatedMessage)
           console.log(`✅ Tool message updated`)
-          this.messages = { ...this.messages }
         }
-      } else if (phase === 'done') {
-        // 工具执行完成
+      } else if (phase === 'result') {
+        // 工具执行完成（包含成功或错误）
+        const isError = data?.isError === true
         const result = data?.result
-        const resultPreview = this.formatToolResult(result)
+        const error = data?.error || data?.errorMessage
 
         console.log(`🏁🏁🏁 Tool ${tool} completed`)
-        console.log(`   Result preview: ${resultPreview.substring(0, 100)}`)
+        console.log(`   isError: ${isError}`)
 
         if (existingIndex !== -1) {
           const updatedMessage = {
             ...this.messages[sessionKey][existingIndex],
-            content: `🔧 ${toolTitle} ✅\n${resultPreview}`,
+            content: '', // ToolCallItem组件负责所有展示
             timestamp: Date.now(),
-            status: 'sent' as const,
+            status: isError ? ('error' as const) : ('sent' as const),
             metadata: {
               ...this.messages[sessionKey][existingIndex].metadata,
-              phase: 'done' as const,
-              result
+              phase: 'result' as const,
+              result,
+              error,
+              isError
             }
           }
           this.messages[sessionKey].splice(existingIndex, 1, updatedMessage)
           console.log(`✅ Tool message finalized`)
-          this.messages = { ...this.messages }
         } else {
           // 如果没有 start 事件，直接创建结果消息
           console.log(`✨ Creating tool result message (no start): ${messageId}`)
           const newMessage: Message = {
             id: messageId,
             role: 'system',
-            content: `🔧 ${toolTitle} ✅\n${resultPreview}`,
+            content: '', // ToolCallItem组件负责所有展示
             timestamp: Date.now(),
-            status: 'sent' as const,
+            status: isError ? ('error' as const) : ('sent' as const),
             metadata: {
-              type: 'tool_result' as const,
+              type: isError ? ('tool_error' as const) : ('tool_result' as const),
               toolName: tool,
               toolCallId,
+              toolTitle,
               result,
-              phase: 'done' as const
+              error,
+              phase: 'result' as const,
+              isError
             }
           }
           this.messages[sessionKey].push(newMessage)
           console.log(`✅ Tool result message added, total messages: ${this.messages[sessionKey].length}`)
-          this.messages = { ...this.messages }
-        }
-      } else if (phase === 'error') {
-        // 工具执行错误
-        const error = data?.error || data?.errorMessage || '未知错误'
-
-        console.log(`❌ Tool ${tool} error: ${error}`)
-
-        if (existingIndex !== -1) {
-          const updatedMessage = {
-            ...this.messages[sessionKey][existingIndex],
-            content: `🔧 ${toolTitle} ❌\n${error}`,
-            timestamp: Date.now(),
-            status: 'error' as const,
-            metadata: {
-              ...this.messages[sessionKey][existingIndex].metadata,
-              phase: 'error' as const,
-              error
-            }
-          }
-          this.messages[sessionKey].splice(existingIndex, 1, updatedMessage)
-          console.log(`✅ Tool message marked as error`)
-          this.messages = { ...this.messages }
-        } else {
-          // 如果没有 start 事件，直接创建错误消息
-          console.log(`✨ Creating tool error message (no start): ${messageId}`)
-          const newMessage: Message = {
-            id: messageId,
-            role: 'system',
-            content: `🔧 ${toolTitle} ❌\n${error}`,
-            timestamp: Date.now(),
-            status: 'error' as const,
-            metadata: {
-              type: 'tool_error' as const,
-              toolName: tool,
-              toolCallId,
-              error,
-              phase: 'error' as const
-            }
-          }
-          this.messages[sessionKey].push(newMessage)
-          console.log(`✅ Tool error message added, total messages: ${this.messages[sessionKey].length}`)
-          this.messages = { ...this.messages }
         }
       }
 
-      console.log(`🔄 Messages object updated for reactivity`)
+      console.log(`🔄 Tool stream event processed`)
     },
 
     /**
@@ -721,18 +741,38 @@ export const useChatStore = defineStore('chat', {
         console.log('📌 Agent run started:', runId)
         this.startStreamingTimeout()
       } else if (phase === 'end' || phase === 'error') {
-        // 响应结束，完成流式状态
-        const messageId = runId
-        const existingIndex = this.messages[sessionKey].findIndex(m => m.id === messageId)
+        // 响应结束，立即清除流式状态
+        this.streamingMessageId = null
+        this.thinkingMessageId = null
 
-        if (existingIndex !== -1) {
-          const updatedMessage = {
-            ...this.messages[sessionKey][existingIndex],
-            status: (phase === 'error' ? 'error' : 'sent') as 'error' | 'sent',
-            timestamp: Date.now()
+        // 响应结束，完成所有相关的流式消息
+        console.log(`🏁 Agent run ${phase}: ${runId}`)
+
+        // 完成所有与此 runId 相关的 streaming 消息
+        const messagesToUpdate: Array<{ index: number; message: Message }> = []
+
+        this.messages[sessionKey].forEach((msg, index) => {
+          if (msg.id.startsWith(runId) && msg.status === 'streaming') {
+            messagesToUpdate.push({
+              index,
+              message: {
+                ...msg,
+                status: (phase === 'error' ? 'error' : 'sent') as 'error' | 'sent',
+                timestamp: Date.now()
+              }
+            })
+            console.log(`   - Will finalize message: ${msg.id}`)
           }
-          this.messages[sessionKey].splice(existingIndex, 1, updatedMessage)
-        }
+        })
+
+        // 从后往前更新，避免索引问题
+        messagesToUpdate.reverse().forEach(({ index, message }) => {
+          this.messages[sessionKey].splice(index, 1, message)
+          console.log(`   - Finalized message at index ${index}`)
+        })
+
+        // 清理已处理的事件记录
+        this.clearProcessedEventsForRun(runId)
 
         // 清除流式状态（包括超时）
         this.clearStreamingState()
@@ -837,15 +877,23 @@ export const useChatStore = defineStore('chat', {
 
       console.log(`📨📨📨 Chat event: runId=${runId}, seq=${seq}, state=${state}`)
 
+      // 事件去重检查（使用统一的runId-seq key）
+      if (this.isEventProcessed('chat', runId, seq)) {
+        console.log(`   - Skipping duplicate chat event ${runId}-${seq}`)
+        return
+      }
+
+      console.log(`   - ✅ Processing chat event ${runId}-${seq}`)
+
       const targetSessionKey = sessionKey || this.currentSessionKey
       if (!targetSessionKey) {
         console.warn('No session key for message')
         return
       }
 
-      // 确保消息数组存在
+      // 确保消息数组存在（不触发响应式更新）
       if (!this.messages[targetSessionKey]) {
-        this.messages = { ...this.messages, [targetSessionKey]: [] }
+        this.messages[targetSessionKey] = []
       }
 
       const newContent = this.extractMessageContent(message)
@@ -869,7 +917,12 @@ export const useChatStore = defineStore('chat', {
       if (state === 'delta') {
         // 增量更新
         this.thinkingMessageId = null
-        this.streamingMessageId = messageId
+
+        // 只有文本消息才设置 streamingMessageId（工具调用不应该显示游标）
+        // 并且确保当前没有完成这个 runId
+        if (contentType === 'text' && this.currentRunId === runId) {
+          this.streamingMessageId = messageId
+        }
 
         if (existingIndex !== -1) {
           // 追加内容到现有消息（相同类型）
@@ -913,23 +966,45 @@ export const useChatStore = defineStore('chat', {
         // 最终消息：完成所有相关的流式消息
         console.log(`✅ Finalizing all messages for run ${runId}`)
 
+        // 立即清除所有流式状态（优先执行，确保UI立即更新）
+        this.streamingMessageId = null
+        this.thinkingMessageId = null
+        this.isSending = false
+        this.currentRunId = null
+
         // 完成所有与此 runId 相关的 streaming 消息
+        const messagesToUpdate: Array<{ index: number; message: Message }> = []
+
         this.messages[targetSessionKey].forEach((msg, index) => {
           if (msg.id.startsWith(runId) && msg.status === 'streaming') {
-            const updatedMessage = {
-              ...msg,
-              status: 'sent' as const,
-              timestamp: message?.timestamp || Date.now()
-            }
-            this.messages[targetSessionKey].splice(index, 1, updatedMessage)
-            console.log(`   - Finalized message: ${msg.id}`)
+            messagesToUpdate.push({
+              index,
+              message: {
+                ...msg,
+                status: 'sent' as const,
+                timestamp: message?.timestamp || Date.now()
+              }
+            })
+            console.log(`   - Will finalize message: ${msg.id}`)
           }
         })
 
-        // 清除流式状态
-        this.clearStreamingState()
+        // 从后往前更新，避免索引问题
+        messagesToUpdate.reverse().forEach(({ index, message }) => {
+          this.messages[targetSessionKey].splice(index, 1, message)
+          console.log(`   - Finalized message at index ${index}`)
+        })
+
+        // 清理已处理的事件记录
+        this.clearProcessedEventsForRun(runId)
       } else if (state === 'error') {
         console.error(`❌ Error in run ${runId}:`, payload.errorMessage)
+        // 立即清除所有流式状态
+        this.streamingMessageId = null
+        this.thinkingMessageId = null
+        this.isSending = false
+        this.currentRunId = null
+
         // 错误状态：标记所有相关消息为错误
         this.messages[targetSessionKey].forEach((msg, index) => {
           if (msg.id.startsWith(runId)) {
@@ -944,9 +1019,15 @@ export const useChatStore = defineStore('chat', {
             this.messages[targetSessionKey].splice(index, 1, updatedMessage)
           }
         })
-        this.clearStreamingState()
+        this.clearProcessedEventsForRun(runId)
       } else if (state === 'aborted') {
         console.log(`⏹️ Run ${runId} aborted`)
+        // 立即清除所有流式状态
+        this.streamingMessageId = null
+        this.thinkingMessageId = null
+        this.isSending = false
+        this.currentRunId = null
+
         // 被中止：标记所有相关消息
         this.messages[targetSessionKey].forEach((msg, index) => {
           if (msg.id.startsWith(runId) && msg.status === 'streaming') {
@@ -961,11 +1042,15 @@ export const useChatStore = defineStore('chat', {
             this.messages[targetSessionKey].splice(index, 1, updatedMessage)
           }
         })
-        this.clearStreamingState()
+        this.clearProcessedEventsForRun(runId)
       }
 
-      // 触发响应式更新
-      this.messages = { ...this.messages }
+      // 只在真正修改了messages后才触发响应式更新
+      // 使用Vue的响应式系统来确保UI更新
+      if (state === 'delta' || state === 'final' || state === 'error' || state === 'aborted') {
+        // 使用splice或其他响应式方法来触发更新
+        // 这里不需要做任何额外操作，因为我们已经修改了数组
+      }
       console.log(`📊 Total messages for session: ${this.messages[targetSessionKey]?.length}`)
       console.log(`📊 Message IDs:`, this.messages[targetSessionKey].map(m => m.id))
     },
@@ -1012,23 +1097,53 @@ export const useChatStore = defineStore('chat', {
      * 1. 完整内容（直接返回）
      * 2. 增量内容（需要追加）
      *
+     * 改进的算法：
+     * - 检测next是否是previous的增量（next从previous的某个位置开始）
+     * - 检测next是否包含previous（完整替换）
+     * - 检测previous是否包含next（重复事件，忽略）
+     * - 否则追加（真正的新内容）
+     *
      * 参考：websocket-integration-guide.md 第 994-999 行
      */
     appendTextContent(previous: string, next: string): string {
       if (!previous) return next
       if (!next) return previous
 
-      // 如果新内容包含旧内容，返回新内容（完整替换）
+      // 1. 如果next包含previous（完整替换）
       if (next.startsWith(previous)) {
+        console.log(`   [appendTextContent] Complete replacement: next contains previous`)
         return next
       }
 
-      // 如果旧内容包含新内容，可能是重复事件，返回旧内容
+      // 2. 如果previous包含next（重复事件，返回previous）
       if (previous.startsWith(next)) {
+        console.log(`   [appendTextContent] Duplicate event, ignoring next`)
         return previous
       }
 
-      // 否则追加（真正的新内容）
+      // 3. 检测next是否是previous的增量（next从previous的某个位置开始）
+      const overlapIndex = previous.indexOf(next.substring(0, Math.min(50, next.length)))
+      if (overlapIndex !== -1 && overlapIndex > previous.length * 0.5) {
+        // next的前部分在previous的后半部分找到，可能是增量
+        const newContent = next.substring(previous.length - overlapIndex)
+        if (newContent && newContent !== next) {
+          console.log(`   [appendTextContent] Appending增量: found overlap at ${overlapIndex}`)
+          return previous + newContent
+        }
+      }
+
+      // 4. 检测previous是否在next中（反向包含）
+      const reverseOverlapIndex = next.indexOf(previous.substring(previous.length - 50))
+      if (reverseOverlapIndex !== -1) {
+        const newContent = next.substring(previous.length - reverseOverlapIndex)
+        if (newContent && newContent !== next) {
+          console.log(`   [appendTextContent] Appending增量: reverse overlap`)
+          return previous + newContent
+        }
+      }
+
+      // 5. 否则直接追加（可能有问题，但至少不会丢失内容）
+      console.log(`   [appendTextContent] Direct append (no overlap detected)`)
       return previous + next
     },
 
@@ -1054,7 +1169,7 @@ export const useChatStore = defineStore('chat', {
       }
 
       this.messages[sessionKey].push(errorMessage)
-      this.messages = { ...this.messages }
+      // Push操作已经触发了响应式更新
     },
 
     /**
@@ -1092,7 +1207,7 @@ export const useChatStore = defineStore('chat', {
 
       // Ensure message array exists
       if (!this.messages[sessionKey]) {
-        this.messages = { ...this.messages, [sessionKey]: [] }
+        this.messages[sessionKey] = []
       }
 
       messages.forEach((msg: any) => {
@@ -1171,8 +1286,7 @@ export const useChatStore = defineStore('chat', {
         }
       })
 
-      // Force reactivity update
-      this.messages = { ...this.messages }
+      // 数组操作已经触发了响应式更新
       console.log('Messages updated, total for session:', this.messages[sessionKey]?.length)
     },
 

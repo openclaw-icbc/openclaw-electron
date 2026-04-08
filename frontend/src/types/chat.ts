@@ -15,7 +15,7 @@ export interface Message {
     toolName?: string
     toolCallId?: string
     toolTitle?: string
-    phase?: 'start' | 'progress' | 'done' | 'error'
+    phase?: 'start' | 'update' | 'result'
     args?: any
     result?: any
     partialResult?: any
@@ -67,6 +67,7 @@ export interface ChatState {
   loading: boolean
   currentRunId: string | null
   isSending: boolean
+  processedEvents: Record<string, boolean>
 }
 
 export interface SendMessageParams {

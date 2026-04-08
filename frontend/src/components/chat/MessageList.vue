@@ -51,18 +51,46 @@ const props = withDefaults(defineProps<Props>(), {
 const containerRef = ref<HTMLElement>()
 const showThinking = computed(() => !!props.thinkingMessageId)
 
+// 检测用户是否手动滚动（距离底部超过150px）
+const isUserScrolledUp = computed(() => {
+  if (!containerRef.value) return false
+  const threshold = 150
+  return containerRef.value.scrollHeight - containerRef.value.scrollTop - containerRef.value.clientHeight > threshold
+})
+
+// 上一次的消息数量，用于检测新消息
+const previousMessageCount = ref(0)
+
 // 自动滚动到底部
-const scrollToBottom = () => {
+const scrollToBottom = (force = false) => {
   nextTick(() => {
     if (containerRef.value) {
-      containerRef.value.scrollTop = containerRef.value.scrollHeight
+      // force=true时强制滚动（新消息、流式状态变化等）
+      // force=false时，只在用户没有向上滚动时才滚动
+      if (force || !isUserScrolledUp.value) {
+        containerRef.value.scrollTop = containerRef.value.scrollHeight
+      }
     }
   })
 }
 
-// 监听消息变化，自动滚动
-watch(() => props.messages, () => {
-  scrollToBottom()
+// 监听消息变化
+watch(() => props.messages, (newMessages, oldMessages) => {
+  const currentCount = newMessages.length
+  const previousCount = previousMessageCount.value
+
+  // 消息数量增加（新消息），强制滚动
+  if (currentCount > previousCount) {
+    console.log('📜 New message added, forcing scroll to bottom')
+    scrollToBottom(true)
+  } else if (currentCount === previousCount && props.streamingMessageId) {
+    // 消息数量未变但有流式消息，说明是内容更新
+    // 只在用户没有向上滚动时滚动
+    console.log('📜 Streaming content update, conditional scroll')
+    scrollToBottom(false)
+  }
+
+  previousMessageCount.value = currentCount
 }, { deep: true })
 
 // 监听流式消息ID变化
@@ -119,6 +147,7 @@ defineExpose({
   flex-direction: column;
   gap: 1rem;
   padding: 0.5rem 0;
+  align-items: flex-start; /* 确保所有子元素左对齐 */
 }
 
 .thinking-indicator {

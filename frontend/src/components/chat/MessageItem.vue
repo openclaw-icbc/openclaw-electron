@@ -3,23 +3,33 @@
     class="message-item"
     :class="[
       `message-${message.role}`,
-      { streaming: isStreaming }
+      { streaming: isActuallyStreaming, 'is-tool-call': isToolCallMessage }
     ]"
   >
-    <div class="message-avatar">
-      {{ avatarText }}
-    </div>
-    <div class="message-content-wrapper">
-      <div class="message-header">
-        <span class="message-sender">{{ senderName }}</span>
-        <span class="message-time">{{ formattedTime }}</span>
+    <!-- 工具调用消息：完全左对齐，无额外布局 -->
+    <template v-if="isToolCallMessage">
+      <div class="tool-call-container">
+        <ToolCallItem :message="message" />
       </div>
-      <div class="message-content" v-html="renderedContent"></div>
-      <div v-if="message.status" class="message-status">
-        <span v-if="message.status === 'sending'" class="status-sending">发送中...</span>
-        <span v-else-if="message.status === 'error'" class="status-error">发送失败</span>
+    </template>
+
+    <!-- 普通消息 -->
+    <template v-else>
+      <div class="message-avatar">
+        {{ avatarText }}
       </div>
-    </div>
+      <div class="message-content-wrapper">
+        <div class="message-header">
+          <span class="message-sender">{{ senderName }}</span>
+          <span class="message-time">{{ formattedTime }}</span>
+        </div>
+        <div class="message-content" v-html="renderedContent"></div>
+        <div v-if="message.status" class="message-status">
+          <span v-if="message.status === 'sending'" class="status-sending">发送中...</span>
+          <span v-else-if="message.status === 'error'" class="status-error">发送失败</span>
+        </div>
+      </div>
+    </template>
   </div>
 </template>
 
@@ -27,6 +37,7 @@
 import { computed } from 'vue'
 import type { Message } from '@/types'
 import { renderMarkdownSync, formatTimestamp } from '@/utils'
+import ToolCallItem from './ToolCallItem.vue'
 
 interface Props {
   message: Message
@@ -35,6 +46,17 @@ interface Props {
 
 const props = withDefaults(defineProps<Props>(), {
   isStreaming: false
+})
+
+// 判断是否是工具调用消息
+const isToolCallMessage = computed(() => {
+  const type = props.message.metadata?.type
+  return type === 'tool_call' || type === 'tool_result' || type === 'tool_error'
+})
+
+// 判断是否真正在流式传输（状态为streaming且isStreaming为true）
+const isActuallyStreaming = computed(() => {
+  return props.isStreaming && props.message.status === 'streaming'
 })
 
 const avatarText = computed(() => {
@@ -102,15 +124,18 @@ const renderedContent = computed(() => {
     // 处理单独的 [toolCall]（没有闭合标签）
     .replace(/\[toolCall\]/g, '<span class="tool-call-badge">🔧 工具调用</span>')
 
+  // 检查是否应该显示光标：必须是流式状态且isStreaming为true
+  const shouldShowCursor = isActuallyStreaming.value
+
   // 如果是流式消息且内容为空，显示输入提示
-  if (props.isStreaming && !content) {
+  if (shouldShowCursor && !content) {
     return '<span class="streaming-cursor">▊</span>'
   }
 
   const html = renderMarkdownSync(content)
 
-  // 如果正在流式传输，添加光标
-  if (props.isStreaming) {
+  // 只有在真正流式传输时才添加光标
+  if (shouldShowCursor) {
     return html + '<span class="streaming-cursor">▊</span>'
   }
 
@@ -135,6 +160,23 @@ const renderedContent = computed(() => {
   background: hsl(var(--muted) / 0.2);
 }
 
+/* 工具调用消息样式：完全左对齐 */
+.message-item.is-tool-call {
+  display: block;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+}
+
+.message-item.is-tool-call:hover {
+  background: transparent;
+}
+
+.tool-call-container {
+  width: 100%;
+  text-align: left;
+}
+
 .message-avatar {
   width: 36px;
   height: 36px;
@@ -153,18 +195,19 @@ const renderedContent = computed(() => {
   background: hsl(var(--secondary));
 }
 
-.message-system .message-avatar {
+/* 系统消息样式（不包括工具调用消息） */
+.message-system:not(.is-tool-call) .message-avatar {
   background: hsl(var(--muted));
   font-size: 1.25rem;
 }
 
-.message-system .message-content-wrapper {
+.message-system:not(.is-tool-call) .message-content-wrapper {
   background: hsl(var(--muted) / 0.2);
   border-radius: calc(var(--radius) - 2px);
   padding: 0.75rem;
 }
 
-.message-system .message-content {
+.message-system:not(.is-tool-call) .message-content {
   font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
   font-size: 0.8125rem;
   white-space: pre-wrap;

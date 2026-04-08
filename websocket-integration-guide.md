@@ -323,6 +323,18 @@ OpenClaw WebSocket 协议使用三种帧类型：
 | `error` | 错误状态 | 是，发生错误 |
 | `aborted` | 已中止 | 是，被中止 |
 
+### role 字段的可能值
+
+`message.role` 字段标识消息的发送者类型：
+
+| 值 | 说明 | 使用场景 |
+|----|------|----------|
+| `user` | 用户消息 | 用户发送的消息内容 |
+| `assistant` | 助手消息 | AI 助手的回复内容 |
+| `tool` | 工具返回结果 | 工具调用后的返回数据 |
+| `system` | 系统提示 | 系统级提示消息（通常不出现在用户界面） |
+| `other` | 其他类型 | 其他未分类的消息类型 |
+
 ### seq 字段
 
 `seq` 是单调递增的序列号，用于检测消息丢失。客户端应检查 `seq` 是否连续：
@@ -433,18 +445,20 @@ function handleChatEvent(payload) {
 |----|------|
 | `lifecycle` | 生命周期事件 |
 | `tool` | 工具调用事件 |
+| `assistant` | 助手回复事件（流式文本输出） |
 | `error` | 错误事件 |
-| `reasoning` | 推理过程 |
-| `attachment` | 附件处理 |
+| `reasoning` | 推理过程事件 |
+| `attachment` | 附件事件 |
 
 ### 工具调用事件 phases
 
 | Phase | 说明 |
 |-------|------|
 | `start` | 工具调用开始 |
-| `progress` | 工具执行中 |
-| `done` | 工具执行完成 |
-| `error` | 工具执行错误 |
+| `update` | 工具执行中（增量更新） |
+| `result` | 工具执行完成（包含最终结果或错误） |
+
+**注意：** 工具执行错误通过 `result` 阶段的 `data.isError` 字段标识，而非单独的 `error` 阶段。
 
 ### 完整工具调用流程示例
 
@@ -477,7 +491,7 @@ function handleChatEvent(payload) {
     "seq": 11,
     "stream": "tool",
     "data": {
-      "phase": "progress",
+      "phase": "update",
       "tool": "browser.search",
       "toolTitle": "搜索: TypeScript 类型",
       "kind": "search",
@@ -497,7 +511,7 @@ function handleChatEvent(payload) {
     "seq": 12,
     "stream": "tool",
     "data": {
-      "phase": "done",
+      "phase": "result",
       "tool": "browser.search",
       "toolTitle": "搜索: TypeScript 类型",
       "kind": "search",
@@ -525,11 +539,29 @@ function handleChatEvent(payload) {
 }
 ```
 
+### 助手回复事件
+
+```json
+{
+  "event": "agent",
+  "payload": {
+    "runId": "run-123",
+    "seq": 2,
+    "stream": "assistant",
+    "ts": 1713456789000,
+    "data": {
+      "text": "这是助手的流式回复内容",
+      "delta": "内容"
+    }
+  }
+}
+```
+
 生命周期 phases：
 
 - `start`: Agent 开始运行
-- `model_selected`: 模型已选择
-- `done`: Agent 运行完成
+- `end`: Agent 运行完成
+- `error`: Agent 运行出错
 
 ---
 
@@ -975,10 +1007,15 @@ function handleAgentEvent(payload) {
 
     if (phase === 'start') {
       console.log(`工具开始: ${toolTitle}`);
-    } else if (phase === 'done') {
-      console.log(`工具完成: ${toolTitle}`);
-    } else if (phase === 'error') {
-      console.log(`工具错误: ${toolTitle}`);
+    } else if (phase === 'update') {
+      console.log(`工具更新: ${toolTitle}`);
+    } else if (phase === 'result') {
+      const isError = data.isError === true;
+      if (isError) {
+        console.log(`工具错误: ${toolTitle}`);
+      } else {
+        console.log(`工具完成: ${toolTitle}`);
+      }
     }
   }
 }
@@ -1178,12 +1215,15 @@ class OpenClawClient {
 
       if (phase === 'start') {
         this.onToolStart(runId, tool, toolTitle, kind);
-      } else if (phase === 'done') {
-        this.onToolDone(runId, tool, data.result);
-      } else if (phase === 'error') {
-        this.onToolError(runId, tool, data.error);
-      } else if (phase === 'progress') {
-        this.onToolProgress(runId, tool, data.partialResult);
+      } else if (phase === 'update') {
+        this.onToolUpdate(runId, tool, data.partialResult);
+      } else if (phase === 'result') {
+        const isError = data.isError === true;
+        if (isError) {
+          this.onToolError(runId, tool, data.error);
+        } else {
+          this.onToolDone(runId, tool, data.result);
+        }
       }
     } else if (stream === 'lifecycle') {
       this.onLifecycleEvent(runId, data.phase, data);
@@ -1217,9 +1257,9 @@ class OpenClawClient {
   onMessageError(runId, error) { console.error(`[${runId}] 错误:`, error); }
   onMessageAborted(runId) { console.log(`[${runId}] 已中止`); }
   onToolStart(runId, tool, title, kind) { console.log(`[${runId}] 工具开始:`, title); }
+  onToolUpdate(runId, tool, progress) { console.log(`[${runId}] 工具更新:`, progress); }
   onToolDone(runId, tool, result) { console.log(`[${runId}] 工具完成:`, tool); }
   onToolError(runId, tool, error) { console.error(`[${runId}] 工具错误:`, error); }
-  onToolProgress(runId, tool, progress) { console.log(`[${runId}] 工具进度:`, progress); }
   onLifecycleEvent(runId, phase, data) { console.log(`[${runId}] 生命周期:`, phase); }
 }
 
@@ -1411,12 +1451,14 @@ class OpenClawClient:
 
             if phase == 'start':
                 await self.on_tool_start(run_id, tool, title, kind)
-            elif phase == 'done':
-                await self.on_tool_done(run_id, tool, data.get('result'))
-            elif phase == 'error':
-                await self.on_tool_error(run_id, tool, data.get('error'))
-            elif phase == 'progress':
-                await self.on_tool_progress(run_id, tool, data.get('partialResult'))
+            elif phase == 'update':
+                await self.on_tool_update(run_id, tool, data.get('partialResult'))
+            elif phase == 'result':
+                is_error = data.get('isError') is True
+                if is_error:
+                    await self.on_tool_error(run_id, tool, data.get('error'))
+                else:
+                    await self.on_tool_done(run_id, tool, data.get('result'))
         elif stream == 'lifecycle':
             await self.on_lifecycle_event(run_id, data.get('phase'), data)
 
@@ -1456,14 +1498,14 @@ class OpenClawClient:
     async def on_tool_start(self, run_id: str, tool: str, title: str, kind: str):
         print(f'[{run_id}] 工具开始: {title}')
 
+    async def on_tool_update(self, run_id: str, tool: str, progress: Any):
+        print(f'[{run_id}] 工具更新: {progress}')
+
     async def on_tool_done(self, run_id: str, tool: str, result: Any):
         print(f'[{run_id}] 工具完成: {tool}')
 
     async def on_tool_error(self, run_id: str, tool: str, error: Any):
         print(f'[{run_id}] 工具错误: {error}')
-
-    async def on_tool_progress(self, run_id: str, tool: str, progress: Any):
-        print(f'[{run_id}] 工具进度: {progress}')
 
     async def on_lifecycle_event(self, run_id: str, phase: str, data: dict):
         print(f'[{run_id}] 生命周期: {phase}')
