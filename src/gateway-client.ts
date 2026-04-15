@@ -356,6 +356,33 @@ export class GatewayClient extends EventEmitter {
     });
   }
 
+  /**
+   * Send a notification (fire-and-forget, no response expected)
+   * Used for abort and other operations where we don't need to wait for response
+   */
+  sendNotification(method: string, params?: any): void {
+    if (!this.connected || !this.ws) {
+      this.log('warn', `Cannot send notification ${method}: not connected`);
+      return;
+    }
+
+    const id = `req-${++this.requestId}`;
+    const frame = {
+      type: 'req',
+      id,
+      method,
+      params: params || {},
+    };
+
+    this.log('debug', `Sending notification: ${method}`);
+
+    try {
+      this.ws!.send(JSON.stringify(frame));
+    } catch (err) {
+      this.log('error', `Failed to send notification ${method}: ${err}`);
+    }
+  }
+
   // Chat methods
   async sendMessage(sessionKey: string, message: string, attachments?: any[]): Promise<string> {
     const idempotencyKey = `msg-${Date.now()}-${Math.random().toString(36).substring(2)}`;
@@ -374,12 +401,13 @@ export class GatewayClient extends EventEmitter {
     return result.runId;
   }
 
-  async abortChat(sessionKey: string, runId?: string): Promise<void> {
+  abortChat(sessionKey: string, runId?: string): void {
     const params: any = { sessionKey };
     if (runId) {
       params.runId = runId;
     }
-    await this.request('chat.abort', params);
+    // Use sendNotification for fire-and-forget (no response expected)
+    this.sendNotification('chat.abort', params);
   }
 
   async getChatHistory(sessionKey: string, limit: number = 200): Promise<any> {

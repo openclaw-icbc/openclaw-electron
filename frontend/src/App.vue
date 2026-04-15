@@ -137,7 +137,9 @@ const canSend = computed(() => {
 })
 
 const canAbort = computed(() => {
-  return !!(chatStore.isSending && chatStore.currentRunId)
+  // 只要正在发送就允许停止，不管是否有runId
+  // 如果没有runId（还在等待服务器响应），前端只清理状态不发送abort消息
+  return chatStore.isSending
 })
 
 // Methods

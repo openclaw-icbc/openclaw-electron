@@ -243,19 +243,56 @@ export const useChatStore = defineStore('chat', {
         return false
       }
 
+      console.log('🛑 Aborting chat...', {
+        currentRunId: this.currentRunId,
+        isSending: this.isSending,
+        thinkingMessageId: this.thinkingMessageId
+      })
+
       try {
-        await abortChat(this.currentSessionKey, this.currentRunId || undefined)
-        console.log('Chat aborted successfully')
-        
-        // 清除流式状态
-        this.clearStreamingState()
-        this.thinkingMessageId = null
-        this.isSending = false
-        this.currentRunId = null
-        
+        // 只有在有runId的情况下才发送abort消息到后端
+        // 如果还在等待服务器响应（没有runId），只清理前端状态
+        if (this.currentRunId) {
+          await abortChat(this.currentSessionKey, this.currentRunId)
+          console.log('✅ Chat aborted successfully on server, runId:', this.currentRunId)
+        } else {
+          console.log('ℹ️ No runId available, only clearing frontend state')
+        }
+
+        // 清除超时定时器
+        if (this.streamingTimeout) {
+          clearTimeout(this.streamingTimeout)
+        }
+
+        // 清除流式状态 - 使用 $patch 确保响应式更新
+        this.$patch({
+          streamingMessageId: null,
+          streamingTimeout: null,
+          thinkingMessageId: null,
+          isSending: false,
+          currentRunId: null
+        })
+
+        console.log('✅ Frontend state cleared:', {
+          isSending: this.isSending,
+          currentRunId: this.currentRunId,
+          thinkingMessageId: this.thinkingMessageId
+        })
+
         return true
       } catch (error: any) {
-        console.error('Failed to abort chat:', error)
+        console.error('❌ Failed to abort chat:', error)
+        // 即使API调用失败，也要清理前端状态
+        if (this.streamingTimeout) {
+          clearTimeout(this.streamingTimeout)
+        }
+        this.$patch({
+          streamingMessageId: null,
+          streamingTimeout: null,
+          thinkingMessageId: null,
+          isSending: false,
+          currentRunId: null
+        })
         throw error
       }
     },

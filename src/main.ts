@@ -312,7 +312,8 @@ ipcMain.handle('abort-chat', async (event, sessionKey, runId) => {
     return { success: false, error: 'Not connected to gateway' };
   }
   try {
-    await gatewayClient.abortChat(sessionKey, runId);
+    // abortChat is fire-and-forget, no need to await
+    gatewayClient.abortChat(sessionKey, runId);
     return { success: true };
   } catch (error: any) {
     return { success: false, error: error.message };
