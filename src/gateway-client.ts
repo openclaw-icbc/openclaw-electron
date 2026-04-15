@@ -374,12 +374,14 @@ export class GatewayClient extends EventEmitter {
       params: params || {},
     };
 
-    this.log('debug', `Sending notification: ${method}`);
+    this.log('info', `[NOTIFICATION] Sending ${method} with params: ${JSON.stringify(params)}`);
 
     try {
-      this.ws!.send(JSON.stringify(frame));
+      const frameStr = JSON.stringify(frame);
+      this.ws!.send(frameStr);
+      this.log('info', `[NOTIFICATION] Sent ${method} successfully, frame: ${frameStr.substring(0, 200)}`);
     } catch (err) {
-      this.log('error', `Failed to send notification ${method}: ${err}`);
+      this.log('error', `[NOTIFICATION] Failed to send ${method}: ${err}`);
     }
   }
 

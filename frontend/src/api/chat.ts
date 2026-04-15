@@ -99,7 +99,9 @@ export async function createSession(params: any): Promise<any> {
  * 取消聊天
  */
 export async function abortChat(sessionKey: string, runId?: string): Promise<void> {
+  console.log('[API] abortChat called:', { sessionKey, runId })
   const result = await window.electronAPI.abortChat(sessionKey, runId)
+  console.log('[API] abortChat result:', result)
 
   if (!result.success) {
     throw new Error(result.error || '取消聊天失败')

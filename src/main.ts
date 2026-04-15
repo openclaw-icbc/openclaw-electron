@@ -308,14 +308,18 @@ ipcMain.handle('get-chat-history', async (event, sessionKey, limit) => {
 });
 
 ipcMain.handle('abort-chat', async (event, sessionKey, runId) => {
+  console.log('[MAIN] abort-chat handler called:', { sessionKey, runId });
   if (!gatewayClient) {
+    console.log('[MAIN] abort-chat failed: not connected to gateway');
     return { success: false, error: 'Not connected to gateway' };
   }
   try {
     // abortChat is fire-and-forget, no need to await
     gatewayClient.abortChat(sessionKey, runId);
+    console.log('[MAIN] abort-chat: abortChat called on gatewayClient');
     return { success: true };
   } catch (error: any) {
+    console.error('[MAIN] abort-chat error:', error.message);
     return { success: false, error: error.message };
   }
 });
