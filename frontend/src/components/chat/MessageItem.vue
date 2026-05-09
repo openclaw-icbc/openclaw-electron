@@ -15,9 +15,12 @@
 
     <!-- 普通消息 -->
     <template v-else>
-      <div class="message-avatar">
-        <template v-if="avatarIcon">
-          <Icon :name="avatarIcon" :size="18" />
+      <div class="message-avatar" :class="`avatar-${message.role}`">
+        <template v-if="isUserMessage">
+          <img :src="userLogo" class="avatar-img" alt="我" />
+        </template>
+        <template v-else-if="message.role === 'assistant' || message.role === 'system'">
+          <img :src="clawLogo" class="claw-logo" alt="Claw" />
         </template>
         <template v-else>
           {{ avatarText }}
@@ -43,7 +46,8 @@ import { computed } from 'vue'
 import type { Message } from '@/types'
 import { renderMarkdownSync, formatTimestamp } from '@/utils'
 import ToolCallItem from './ToolCallItem.vue'
-import Icon from '@/components/common/Icon.vue'
+import clawLogo from '@/assets/openclaw-logo.png'
+import userLogo from '@/assets/user-logo.jpg'
 
 interface Props {
   message: Message
@@ -71,13 +75,8 @@ const avatarText = computed(() => {
   return 'A'
 })
 
-const avatarIcon = computed(() => {
-  if (props.message.role === 'system') return 'wrench'
-  return ''
-})
-
 const senderName = computed(() => {
-  if (props.message.role === 'user') return '你'
+  if (props.message.role === 'user') return '我'
   if (props.message.role === 'system') {
     // 如果是工具消息，显示工具名称
     if (props.message.metadata?.type === 'tool_call' || props.message.metadata?.type === 'tool_result') {
@@ -85,8 +84,10 @@ const senderName = computed(() => {
     }
     return '系统'
   }
-  return 'Assistant'
+  return 'Claw'
 })
+
+const isUserMessage = computed(() => props.message.role === 'user')
 
 const formattedTime = computed(() => {
   return formatTimestamp(props.message.timestamp)
@@ -167,6 +168,38 @@ const renderedContent = computed(() => {
   background: hsl(var(--muted) / 0.3);
 }
 
+/* 用户消息右对齐，类似微信 */
+.message-user {
+  align-self: flex-end;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  max-width: 80%;
+}
+
+.message-user .message-content-wrapper {
+  order: 1;
+  width: fit-content;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+}
+
+.message-user .message-content {
+  background: #95ec69;
+  color: #000;
+  border-radius: 12px;
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+}
+
+.message-user .message-header {
+  justify-content: flex-end;
+}
+
+.message-user:hover {
+  background: transparent;
+}
+
 .message-item.streaming {
   background: hsl(var(--muted) / 0.2);
 }
@@ -200,21 +233,38 @@ const renderedContent = computed(() => {
   font-weight: 600;
   font-size: 0.875rem;
   flex-shrink: 0;
+  overflow: hidden;
 }
 
+/* 用户头像 */
 .message-user .message-avatar {
-  background: hsl(var(--secondary));
+  order: 2;
+  background: transparent;
+  width: 44px;
+  height: 44px;
+  border-radius: 0;
+  overflow: visible;
 }
 
-/* 系统消息样式（不包括工具调用消息） */
+/* 头像图片 */
+.avatar-img,
+.claw-logo {
+  width: 44px;
+  height: 44px;
+  object-fit: contain;
+}
+
+/* Assistant / System 头像容器 */
+.message-assistant .message-avatar,
 .message-system:not(.is-tool-call) .message-avatar {
-  background: hsl(var(--muted));
-  font-size: 1.25rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  background: transparent;
+  width: 44px;
+  height: 44px;
+  border-radius: 0;
+  overflow: visible;
 }
 
+/* 系统消息内容（不包括工具调用消息） */
 .message-system:not(.is-tool-call) .message-content-wrapper {
   background: hsl(var(--muted) / 0.2);
   border-radius: calc(var(--radius) - 2px);
