@@ -16,7 +16,12 @@
     <!-- 普通消息 -->
     <template v-else>
       <div class="message-avatar">
-        {{ avatarText }}
+        <template v-if="avatarIcon">
+          <Icon :name="avatarIcon" :size="18" />
+        </template>
+        <template v-else>
+          {{ avatarText }}
+        </template>
       </div>
       <div class="message-content-wrapper">
         <div class="message-header">
@@ -38,6 +43,7 @@ import { computed } from 'vue'
 import type { Message } from '@/types'
 import { renderMarkdownSync, formatTimestamp } from '@/utils'
 import ToolCallItem from './ToolCallItem.vue'
+import Icon from '@/components/common/Icon.vue'
 
 interface Props {
   message: Message
@@ -61,8 +67,13 @@ const isActuallyStreaming = computed(() => {
 
 const avatarText = computed(() => {
   if (props.message.role === 'user') return 'U'
-  if (props.message.role === 'system') return '🔧'
+  if (props.message.role === 'system') return ''
   return 'A'
+})
+
+const avatarIcon = computed(() => {
+  if (props.message.role === 'system') return 'wrench'
+  return ''
 })
 
 const senderName = computed(() => {
@@ -109,20 +120,20 @@ const renderedContent = computed(() => {
   content = content
     // 处理 [工具调用: xxx]
     .replace(/\[工具调用:\s*([^\]]+)\]/g, (match, toolName) => {
-      return `<span class="tool-call-badge">🔧 调用工具: ${toolName}</span>`
+      return `<span class="tool-call-badge"><svg class="badge-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg> 调用工具: ${toolName}</span>`
     })
     // 处理 [工具结果]
-    .replace(/\[工具结果\]/g, '<span class="tool-result-badge">📋 工具结果</span>')
+    .replace(/\[工具结果\]/g, '<span class="tool-result-badge"><svg class="badge-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg> 工具结果</span>')
     // 处理 [thinking]
-    .replace(/\[thinking\]/g, '<span class="thinking-badge">💭 思考中...</span>')
+    .replace(/\[thinking\]/g, '<span class="thinking-badge"><svg class="badge-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/><path d="M20 3v4"/><path d="M22 5h-4"/></svg> 思考中...</span>')
     // 处理 [toolCall]...[/toolCall]
     .replace(/\[toolCall\](.*?)\[\/toolCall\]/g, (match, toolName) => {
-      return `<span class="tool-call-badge">🔧 调用工具: ${toolName}</span>`
+      return `<span class="tool-call-badge"><svg class="badge-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg> 调用工具: ${toolName}</span>`
     })
     // 处理 [toolResult]
-    .replace(/\[toolResult\]/g, '<span class="tool-result-badge">📋 工具结果</span>')
+    .replace(/\[toolResult\]/g, '<span class="tool-result-badge"><svg class="badge-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg> 工具结果</span>')
     // 处理单独的 [toolCall]（没有闭合标签）
-    .replace(/\[toolCall\]/g, '<span class="tool-call-badge">🔧 工具调用</span>')
+    .replace(/\[toolCall\]/g, '<span class="tool-call-badge"><svg class="badge-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg> 工具调用</span>')
 
   // 检查是否应该显示光标：必须是流式状态且isStreaming为true
   const shouldShowCursor = isActuallyStreaming.value
@@ -199,6 +210,9 @@ const renderedContent = computed(() => {
 .message-system:not(.is-tool-call) .message-avatar {
   background: hsl(var(--muted));
   font-size: 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .message-system:not(.is-tool-call) .message-content-wrapper {
@@ -283,7 +297,9 @@ const renderedContent = computed(() => {
 
 /* 工具调用和思考标记样式 */
 .message-content :deep(.tool-call-badge) {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
   background: hsl(var(--primary) / 0.1);
   border: 1px solid hsl(var(--primary) / 0.3);
   color: hsl(var(--primary));
@@ -296,7 +312,9 @@ const renderedContent = computed(() => {
 }
 
 .message-content :deep(.tool-result-badge) {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
   background: hsl(142, 76%, 36% / 0.1);
   border: 1px solid hsl(142, 76%, 36% / 0.3);
   color: hsl(142, 76%, 36%);
@@ -308,7 +326,9 @@ const renderedContent = computed(() => {
 }
 
 .message-content :deep(.thinking-badge) {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
   background: hsl(var(--muted) / 0.3);
   color: hsl(var(--muted-foreground));
   padding: 0.125rem 0.375rem;
@@ -316,6 +336,10 @@ const renderedContent = computed(() => {
   font-size: 0.75rem;
   font-style: italic;
   margin: 0.25rem 0;
+}
+
+.badge-icon {
+  flex-shrink: 0;
 }
 
 .streaming-cursor {

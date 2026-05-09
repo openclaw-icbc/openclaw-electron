@@ -7,7 +7,7 @@
           :key="toast.id"
           :class="['toast', `toast-${toast.type}`]"
         >
-          <span class="toast-icon">{{ getIcon(toast.type) }}</span>
+          <span class="toast-icon"><Icon :name="getIcon(toast.type)" :size="18" /></span>
           <span class="toast-message">{{ toast.message }}</span>
         </div>
       </TransitionGroup>
@@ -19,16 +19,17 @@
 import { computed } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useUiStore } from '@/stores'
+import Icon from '@/components/common/Icon.vue'
 
 const uiStore = useUiStore()
 const { toasts } = storeToRefs(uiStore)
 
 function getIcon(type: string): string {
   const icons: Record<string, string> = {
-    info: 'ℹ️',
-    success: '✅',
-    warning: '⚠️',
-    error: '❌'
+    info: 'info',
+    success: 'check-circle',
+    warning: 'alert-triangle',
+    error: 'x-circle'
   }
   return icons[type] || icons.info
 }
@@ -61,9 +62,16 @@ function getIcon(type: string): string {
 }
 
 .toast-icon {
-  font-size: 1.25rem;
+  display: flex;
+  align-items: center;
   line-height: 1;
+  flex-shrink: 0;
 }
+
+.toast-info .toast-icon { color: hsl(var(--primary)); }
+.toast-success .toast-icon { color: hsl(142, 76%, 36%); }
+.toast-warning .toast-icon { color: hsl(38, 92%, 50%); }
+.toast-error .toast-icon { color: hsl(var(--destructive)); }
 
 .toast-message {
   flex: 1;

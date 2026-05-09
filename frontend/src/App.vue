@@ -44,7 +44,9 @@
                   class="settings-btn"
                   title="设置"
                   @click="openSettings"
-                >⚙️</button>
+                >
+                  <Icon name="settings" :size="18" />
+                </button>
               </div>
             </div>
 
@@ -100,6 +102,7 @@ import SettingsDialog from '@/components/settings/SettingsDialog.vue'
 import Toast from '@/components/common/Toast.vue'
 import Loading from '@/components/common/Loading.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
+import Icon from '@/components/common/Icon.vue'
 
 // Stores
 const configStore = useConfigStore()
@@ -317,10 +320,10 @@ onUnmounted(() => {
 .settings-btn {
   background: none;
   border: none;
-  font-size: 1.5rem;
   cursor: pointer;
   padding: 0.5rem;
   border-radius: 0.375rem;
+  color: hsl(var(--foreground));
   transition: background-color 0.15s ease;
   display: flex;
   align-items: center;

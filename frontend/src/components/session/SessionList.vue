@@ -17,7 +17,7 @@
 
     <div class="sessions-header" @click="toggleSessions">
       <div class="flex items-center gap-2">
-        <span class="sessions-header-icon">💬</span>
+        <span class="sessions-header-icon"><Icon name="message-square" :size="16" /></span>
         <span class="text-sm font-semibold">历史对话</span>
       </div>
       <div class="flex items-center gap-2">
@@ -53,6 +53,7 @@ import { storeToRefs } from 'pinia'
 import { useConfigStore, useChatStore, useUiStore, useGatewayStore } from '@/stores'
 import SessionItem from './SessionItem.vue'
 import PromptDialog from '@/components/common/PromptDialog.vue'
+import Icon from '@/components/common/Icon.vue'
 
 const configStore = useConfigStore()
 const chatStore = useChatStore()
@@ -164,7 +165,8 @@ async function handleSelectSession(sessionKey: string) {
 }
 
 .sessions-header-icon {
-  font-size: 1rem;
+  display: flex;
+  align-items: center;
 }
 
 .sessions-count {
