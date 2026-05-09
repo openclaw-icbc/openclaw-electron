@@ -61,11 +61,14 @@ const isUserScrolledUp = computed(() => {
 // 上一次的消息数量，用于检测新消息
 const previousMessageCount = ref(0)
 
+// 上一次的消息数组引用，用于检测会话切换
+const previousMessagesRef = ref<Message[] | null>(null)
+
 // 自动滚动到底部
 const scrollToBottom = (force = false) => {
   nextTick(() => {
     if (containerRef.value) {
-      // force=true时强制滚动（新消息、流式状态变化等）
+      // force=true时强制滚动（新消息、会话切换等）
       // force=false时，只在用户没有向上滚动时才滚动
       if (force || !isUserScrolledUp.value) {
         containerRef.value.scrollTop = containerRef.value.scrollHeight
@@ -75,22 +78,24 @@ const scrollToBottom = (force = false) => {
 }
 
 // 监听消息变化
-watch(() => props.messages, (newMessages, oldMessages) => {
+watch(() => props.messages, (newMessages) => {
   const currentCount = newMessages.length
-  const previousCount = previousMessageCount.value
+  const prevRef = previousMessagesRef.value
 
-  // 消息数量增加（新消息），强制滚动
-  if (currentCount > previousCount) {
-    console.log('📜 New message added, forcing scroll to bottom')
+  // 检测是否切换了会话（数组引用不同且引用非首次设置）
+  const isSessionSwitch = prevRef !== null && newMessages !== prevRef
+
+  if (isSessionSwitch || currentCount > previousMessageCount.value) {
+    // 切换会话 或 新消息，强制滚动到底部
     scrollToBottom(true)
-  } else if (currentCount === previousCount && props.streamingMessageId) {
+  } else if (currentCount === previousMessageCount.value && props.streamingMessageId) {
     // 消息数量未变但有流式消息，说明是内容更新
     // 只在用户没有向上滚动时滚动
-    console.log('📜 Streaming content update, conditional scroll')
     scrollToBottom(false)
   }
 
   previousMessageCount.value = currentCount
+  previousMessagesRef.value = newMessages
 }, { deep: true })
 
 // 监听流式消息ID变化
