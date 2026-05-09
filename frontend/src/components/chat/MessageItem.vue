@@ -15,11 +15,8 @@
 
     <!-- 普通消息 -->
     <template v-else>
-      <div class="message-avatar" :class="`avatar-${message.role}`">
-        <template v-if="isUserMessage">
-          <img :src="userLogo" class="avatar-img" alt="我" />
-        </template>
-        <template v-else-if="message.role === 'assistant' || message.role === 'system'">
+      <div v-if="!isUserMessage" class="message-avatar" :class="`avatar-${message.role}`">
+        <template v-if="message.role === 'assistant' || message.role === 'system'">
           <img :src="clawLogo" class="claw-logo" alt="Claw" />
         </template>
         <template v-else>
@@ -47,7 +44,6 @@ import type { Message } from '@/types'
 import { renderMarkdownSync, formatTimestamp } from '@/utils'
 import ToolCallItem from './ToolCallItem.vue'
 import clawLogo from '@/assets/openclaw-logo.png'
-import userLogo from '@/assets/user-logo.jpg'
 
 interface Props {
   message: Message
@@ -168,18 +164,12 @@ const renderedContent = computed(() => {
   background: hsl(var(--muted) / 0.3);
 }
 
-/* 用户消息右对齐，类似微信 */
+/* 用户消息右对齐，类似微信（无头像） */
 .message-user {
   align-self: flex-end;
-  justify-content: flex-end;
-  gap: 0.75rem;
-  max-width: 80%;
 }
 
 .message-user .message-content-wrapper {
-  order: 1;
-  width: fit-content;
-  flex: none;
   display: flex;
   flex-direction: column;
 }
@@ -190,6 +180,7 @@ const renderedContent = computed(() => {
   border-radius: 12px;
   padding: 0.5rem 0.75rem;
   text-align: left;
+  max-width: 60vw;
 }
 
 .message-user .message-header {
@@ -234,24 +225,6 @@ const renderedContent = computed(() => {
   font-size: 0.875rem;
   flex-shrink: 0;
   overflow: hidden;
-}
-
-/* 用户头像 */
-.message-user .message-avatar {
-  order: 2;
-  background: transparent;
-  width: 44px;
-  height: 44px;
-  border-radius: 0;
-  overflow: visible;
-}
-
-/* 头像图片 */
-.avatar-img,
-.claw-logo {
-  width: 44px;
-  height: 44px;
-  object-fit: contain;
 }
 
 /* Assistant / System 头像容器 */
