@@ -9,44 +9,91 @@
         title="最小化"
         @click="minimize"
       >
-        <span>─</span>
+        <svg width="10" height="10" viewBox="0 0 10 10">
+          <line x1="0" y1="5" x2="10" y2="5" stroke="currentColor" stroke-width="1"/>
+        </svg>
       </button>
       <button
         class="title-bar-button maximize-btn"
-        title="最大化"
-        @click="maximize"
+        :title="isMaximized ? '还原' : '最大化'"
+        @click="toggleMaximize"
       >
-        <span>□</span>
+        <svg v-if="!isMaximized" width="10" height="10" viewBox="0 0 10 10">
+          <rect x="0.5" y="0.5" width="9" height="9" fill="none" stroke="currentColor" stroke-width="1"/>
+        </svg>
+        <svg v-else width="10" height="10" viewBox="0 0 10 10">
+          <!-- 后面的窗口（只露右上部分，左下被前面窗口遮挡） -->
+          <line x1="2.5" y1="0.5" x2="9" y2="0.5" stroke="currentColor" stroke-width="0.8"/>
+          <line x1="9" y1="0.5" x2="9" y2="7" stroke="currentColor" stroke-width="0.8"/>
+          <!-- 前面的窗口 -->
+          <rect x="0.5" y="2.5" width="6.5" height="6.5" fill="none" stroke="currentColor" stroke-width="0.8"/>
+        </svg>
       </button>
       <button
         class="title-bar-button close-btn"
         title="关闭"
         @click="close"
       >
-        <span>✕</span>
+        <svg width="10" height="10" viewBox="0 0 10 10">
+          <line x1="0" y1="0" x2="10" y2="10" stroke="currentColor" stroke-width="1"/>
+          <line x1="10" y1="0" x2="0" y2="10" stroke="currentColor" stroke-width="1"/>
+        </svg>
       </button>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-function minimize() {
-  if (window.electronAPI?.minimizeWindow) {
-    window.electronAPI.minimizeWindow()
+import { ref, onMounted, onUnmounted } from 'vue'
+
+const isMaximized = ref(false)
+
+async function checkMaximized() {
+  try {
+    isMaximized.value = await window.electronAPI?.isMaximized() ?? false
+  } catch {
+    isMaximized.value = false
   }
 }
 
-function maximize() {
-  if (window.electronAPI?.maximizeWindow) {
-    window.electronAPI.maximizeWindow()
+function minimize() {
+  window.electronAPI?.minimizeWindow()
+}
+
+async function toggleMaximize() {
+  if (isMaximized.value) {
+    window.electronAPI?.unmaximizeWindow()
+  } else {
+    window.electronAPI?.maximizeWindow()
   }
+  // 立即检查状态
+  await checkMaximized()
 }
 
 function close() {
-  if (window.electronAPI?.closeWindow) {
-    window.electronAPI.closeWindow()
-  }
+  window.electronAPI?.closeWindow()
 }
+
+// 定时检查窗口最大化状态（窗口尺寸变化时会更新）
+let resizeTimer: number | null = null
+function onResize() {
+  if (resizeTimer) clearTimeout(resizeTimer)
+  resizeTimer = window.setTimeout(checkMaximized, 100)
+}
+
+onMounted(() => {
+  checkMaximized()
+  window.addEventListener('resize', onResize)
+  window.electronAPI?.onWindowMaximizeChanged?.((maximized: boolean) => {
+    isMaximized.value = maximized
+  })
+})
+
+onUnmounted(() => {
+  window.removeEventListener('resize', onResize)
+  if (resizeTimer) clearTimeout(resizeTimer)
+  window.electronAPI?.removeAllListeners?.('window-maximize-changed')
+})
 </script>
 
 <style scoped>
@@ -105,13 +152,12 @@ function close() {
   background: hsl(var(--destructive));
 }
 
-.title-bar-button span {
-  font-size: 0.6875rem;
-  font-weight: 400;
-  opacity: 0.8;
+.title-bar-button svg {
+  color: hsl(var(--foreground) / 0.8);
+  transition: color 0.15s ease;
 }
 
-.title-bar-button:hover span {
-  opacity: 1;
+.title-bar-button:hover svg {
+  color: hsl(var(--foreground));
 }
 </style>

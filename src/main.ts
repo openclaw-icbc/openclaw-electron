@@ -219,6 +219,18 @@ function createWindow() {
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
+
+  // 监听窗口最大化/还原事件，通知渲染进程更新图标
+  mainWindow.on('maximize', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('window-maximize-changed', true);
+    }
+  });
+  mainWindow.on('unmaximize', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('window-maximize-changed', false);
+    }
+  });
 }
 
 // Initialize managers

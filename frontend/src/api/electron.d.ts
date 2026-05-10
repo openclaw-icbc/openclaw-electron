@@ -53,7 +53,10 @@ export interface ElectronAPI {
   // 窗口控制
   minimizeWindow(): void
   maximizeWindow(): void
+  unmaximizeWindow(): void
+  isMaximized(): Promise<boolean>
   closeWindow(): void
+  onWindowMaximizeChanged(callback: (maximized: boolean) => void): void
 }
 
 declare global {

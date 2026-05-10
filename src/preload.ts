@@ -7,6 +7,7 @@ export interface ElectronAPI {
   unmaximizeWindow: () => Promise<void>;
   closeWindow: () => Promise<void>;
   isMaximized: () => Promise<boolean>;
+  onWindowMaximizeChanged: (callback: (maximized: boolean) => void) => void;
 
   // Config
   getConfig: () => Promise<any>;
@@ -57,6 +58,9 @@ const electronAPI: ElectronAPI = {
   unmaximizeWindow: () => ipcRenderer.invoke('window-unmaximize'),
   closeWindow: () => ipcRenderer.invoke('window-close'),
   isMaximized: () => ipcRenderer.invoke('window-is-maximized'),
+  onWindowMaximizeChanged: (callback) => {
+    ipcRenderer.on('window-maximize-changed', (_event, maximized: boolean) => callback(maximized));
+  },
 
   // Config
   getConfig: () => ipcRenderer.invoke('get-config'),
@@ -106,6 +110,7 @@ const electronAPI: ElectronAPI = {
     ipcRenderer.removeAllListeners('gateway-connected');
     ipcRenderer.removeAllListeners('gateway-disconnected');
     ipcRenderer.removeAllListeners('gateway-event');
+    ipcRenderer.removeAllListeners('window-maximize-changed');
   }
 };
 
