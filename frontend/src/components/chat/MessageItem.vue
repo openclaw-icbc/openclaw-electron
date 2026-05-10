@@ -16,7 +16,7 @@
     <!-- 普通消息 -->
     <template v-else>
       <div v-if="!isUserMessage" class="message-avatar" :class="`avatar-${message.role}`">
-        <template v-if="message.role === 'assistant' || message.role === 'system'">
+        <template v-if="message.role === 'assistant' || message.role === 'system' || message.role === 'tool'">
           <img :src="clawLogo" class="claw-logo" alt="Claw" />
         </template>
         <template v-else>
@@ -73,11 +73,12 @@ const avatarText = computed(() => {
 
 const senderName = computed(() => {
   if (props.message.role === 'user') return '我'
-  if (props.message.role === 'system') {
+  if (props.message.role === 'system' || props.message.role === 'tool') {
     // 如果是工具消息，显示工具名称
     if (props.message.metadata?.type === 'tool_call' || props.message.metadata?.type === 'tool_result') {
       return `工具: ${props.message.metadata.toolName || 'unknown'}`
     }
+    if (props.message.role === 'tool') return 'Claw'
     return '系统'
   }
   return 'Claw'

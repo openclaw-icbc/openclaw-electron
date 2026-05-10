@@ -165,7 +165,7 @@ export const useChatStore = defineStore('chat', {
 
               return {
                 id: msg.id || msg.messageId || msg.msgId || `msg-${Date.now()}-${Math.random()}`,
-                role: msg.role || msg.sender || msg.type || 'user',
+                role: this.normalizeRole(msg),
                 content: content,
                 timestamp: msg.timestamp || msg.createdAt || msg.created_at || msg.time || Date.now(),
                 createdAt: msg.createdAt || msg.created_at || msg.timestamp || Date.now(),
