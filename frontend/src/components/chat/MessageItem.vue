@@ -73,11 +73,11 @@ const avatarText = computed(() => {
 
 const senderName = computed(() => {
   if (props.message.role === 'user') return '我'
+  // 优先检查是否是工具消息（通过 metadata.type 判断，不依赖 role）
+  if (isToolCallMessage.value) {
+    return `Tool: ${props.message.metadata?.toolName || 'unknown'}`
+  }
   if (props.message.role === 'system' || props.message.role === 'tool') {
-    // 如果是工具消息，显示工具名称
-    if (props.message.metadata?.type === 'tool_call' || props.message.metadata?.type === 'tool_result') {
-      return `工具: ${props.message.metadata.toolName || 'unknown'}`
-    }
     if (props.message.role === 'tool') return 'Claw'
     return '系统'
   }

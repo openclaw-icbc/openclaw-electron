@@ -163,6 +163,52 @@ export const useChatStore = defineStore('chat', {
                 }).filter(Boolean).join('')
               }
 
+              // 根据原始角色设置 metadata.type（用于历史记录中的工具消息识别）
+              const originalRole = (msg.role || msg.sender || msg.type || '').toLowerCase()
+              let metadataType = msg.metadata?.type || msg.meta?.type
+              let toolName = msg.toolName || msg.tool_name || msg.tool || msg.name
+
+              // 检查原始内容数组中是否有 tool_use 块（历史记录中的工具调用）
+              const rawContent = msg.content || msg.text || msg.body || msg.message
+              if (Array.isArray(rawContent) && !metadataType) {
+                for (const part of rawContent) {
+                  if (part && typeof part === 'object') {
+                    if (part.type === 'tool_use' || part.type === 'tool_use_call') {
+                      metadataType = 'tool_call'
+                      if (!toolName) toolName = part.name || part.id || 'unknown'
+                    }
+                    if (part.type === 'tool_result') {
+                      metadataType = 'tool_result'
+                      if (!toolName) toolName = part.toolName || part.name || 'unknown'
+                    }
+                  }
+                }
+              }
+
+              // 如果还没设置 metadataType，检查原始角色
+              if (!metadataType) {
+                if (originalRole === 'tool' || originalRole === 'toolresult' || originalRole === 'tool_result' || originalRole === 'function') {
+                  const contentStr = typeof content === 'string' ? content : ''
+                  if (contentStr.includes('[工具调用:') || contentStr.includes('[toolCall]') || contentStr.includes('tool_use')) {
+                    metadataType = 'tool_call'
+                    if (!toolName) {
+                      const match = contentStr.match(/\[工具调用:\s*([^\]]+)\]/)
+                      if (match) toolName = match[1]
+                    }
+                  } else if (contentStr.includes('[工具结果]') || contentStr.includes('[toolResult]') || contentStr.includes('tool_result')) {
+                    metadataType = 'tool_result'
+                  } else {
+                    metadataType = 'tool_result'
+                  }
+                }
+              }
+
+              // 最终兜底：如果 metadataType 已设置但 toolName 仍为空，从转换后的 content 字符串中提取
+              if (metadataType && !toolName && typeof content === 'string') {
+                const match = content.match(/\[工具调用:\s*([^\]]+)\]/)
+                if (match) toolName = match[1]
+              }
+
               return {
                 id: msg.id || msg.messageId || msg.msgId || `msg-${Date.now()}-${Math.random()}`,
                 role: this.normalizeRole(msg),
@@ -171,7 +217,12 @@ export const useChatStore = defineStore('chat', {
                 createdAt: msg.createdAt || msg.created_at || msg.timestamp || Date.now(),
                 status: msg.status || 'sent',
                 attachments: msg.attachments || [],
-                metadata: msg.metadata || msg.meta || {}
+                metadata: {
+                  ...(msg.metadata || {}),
+                  ...(msg.meta || {}),
+                  ...(metadataType ? { type: metadataType } : {}),
+                  ...(toolName ? { toolName } : {})
+                }
               }
             })
           : []
@@ -630,6 +681,32 @@ export const useChatStore = defineStore('chat', {
     },
 
     /**
+     * 在正确的位置插入工具消息
+     * 策略：工具消息插入到同 runId 的最后一条文本消息之后
+     * 保证视觉顺序为：文字 → 工具调用 → 文字续接
+     */
+    insertMessageAfterText(sessionKey: string, message: Message, runId: string) {
+      const msgs = this.messages[sessionKey]
+      // 找到同 runId 的最后一条非工具消息（文本消息）的位置
+      let insertIndex = -1
+      for (let i = msgs.length - 1; i >= 0; i--) {
+        const m = msgs[i]
+        if (m.id.startsWith(runId)) {
+          const type = m.metadata?.type
+          if (type !== 'tool_call' && type !== 'tool_result' && type !== 'tool_error') {
+            insertIndex = i
+            break
+          }
+        }
+      }
+      if (insertIndex >= 0) {
+        msgs.splice(insertIndex + 1, 0, message)
+      } else {
+        msgs.push(message)
+      }
+    },
+
+    /**
      * 处理 tool 流式事件
      *
      * 根据 OpenClaw Gateway 协议，工具调用事件的 phases：
@@ -687,7 +764,7 @@ export const useChatStore = defineStore('chat', {
             }
           }
 
-          this.messages[sessionKey].push(newMessage)
+          this.insertMessageAfterText(sessionKey, newMessage, runId)
           console.log(`✅ Tool message added, total messages: ${this.messages[sessionKey].length}`)
         }
       } else if (phase === 'update') {
@@ -756,7 +833,7 @@ export const useChatStore = defineStore('chat', {
               isError
             }
           }
-          this.messages[sessionKey].push(newMessage)
+          this.insertMessageAfterText(sessionKey, newMessage, runId)
           console.log(`✅ Tool result message added, total messages: ${this.messages[sessionKey].length}`)
         }
       }

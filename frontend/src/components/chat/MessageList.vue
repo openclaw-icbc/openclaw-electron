@@ -11,7 +11,7 @@
 
     <div v-else class="message-list-content">
       <MessageItem
-        v-for="message in messages"
+        v-for="message in sortedMessages"
         :key="message.id"
         :message="message"
         :is-streaming="message.id === streamingMessageId"
@@ -50,6 +50,65 @@ const props = withDefaults(defineProps<Props>(), {
 
 const containerRef = ref<HTMLElement>()
 const showThinking = computed(() => !!props.thinkingMessageId)
+
+// 提取消息的 runId（消息ID格式：runId-type 或 runId-tool-seq）
+function extractRunId(messageId: string): string {
+  const parts = messageId.split('-')
+  if (parts.length >= 2) {
+    return parts.slice(0, -1).join('-')
+  }
+  return messageId
+}
+
+// 获取消息的类型优先级（用于排序）
+function getMessageTypePriority(message: Message): number {
+  const type = message.metadata?.type
+  if (type === 'tool_call' || type === 'tool_result' || type === 'tool_error') return 1
+  if (message.role === 'user') return -1 // 用户消息保持原序
+  return 0 // 文本消息
+}
+
+// 排序后的消息列表：同一 runId 内，文本消息在前，工具消息在后
+// 非 run 消息（用户消息、历史消息）保持原序
+const sortedMessages = computed(() => {
+  const result = [...props.messages]
+
+  // 收集所有 run 消息的索引
+  const runIndices = new Map<string, number[]>()
+
+  for (let i = 0; i < result.length; i++) {
+    const msg = result[i]
+    const isRunMessage = msg.id.includes('-tool-') ||
+      msg.id.includes('-text') ||
+      msg.id.includes('-tool_call') ||
+      msg.id.includes('-tool_result') ||
+      msg.id.includes('-thinking') ||
+      msg.id.includes('-agent_error')
+
+    if (isRunMessage) {
+      const runId = extractRunId(msg.id)
+      if (!runIndices.has(runId)) {
+        runIndices.set(runId, [])
+      }
+      runIndices.get(runId)!.push(i)
+    }
+  }
+
+  // 对每个 run 内的消息按类型排序（文本在前，工具在后）
+  for (const [, indices] of runIndices) {
+    const sorted = indices.map(i => result[i]).sort((a, b) => {
+      const pa = getMessageTypePriority(a)
+      const pb = getMessageTypePriority(b)
+      if (pa !== pb) return pa - pb
+      return 0
+    })
+    for (let i = 0; i < indices.length; i++) {
+      result[indices[i]] = sorted[i]
+    }
+  }
+
+  return result
+})
 
 // 检测用户是否手动滚动（距离底部超过150px）
 const isUserScrolledUp = computed(() => {
