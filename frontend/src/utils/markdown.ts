@@ -29,7 +29,8 @@ export async function renderMarkdown(markdown: string | any[]): Promise<string> 
 }
 
 /**
- * 将 Markdown 转换为 HTML（同步版本）
+ * 同步渲染 Markdown（用于 Vue computed）
+ * 优先使用 marked.parse，遇到 Promise 或错误时使用轻量同步回退
  */
 export function renderMarkdownSync(markdown: string | any[]): string {
   // Handle array content (convert to string)
@@ -44,14 +45,91 @@ export function renderMarkdownSync(markdown: string | any[]): string {
     }).join('')
   }
   if (!markdown || typeof markdown !== 'string') return ''
+
   try {
     const result = marked.parse(markdown)
-    // 如果返回的是 Promise，我们暂时返回转义后的 HTML
-    return typeof result === 'string' ? result : escapeHtml(markdown)
+    if (typeof result === 'string') return result
+    // marked.parse 返回 Promise（极少情况）：用轻量回退渲染
+    console.warn('[renderMarkdownSync] marked.parse returned Promise, using fallback')
+    return syncMarkdownFallback(markdown)
   } catch (error) {
-    console.error('Failed to render markdown:', error)
-    return escapeHtml(String(markdown))
+    console.error('[renderMarkdownSync] marked.parse error:', error)
+    return syncMarkdownFallback(markdown)
   }
+}
+
+/**
+ * 轻量同步 Markdown 回退（处理最常见语法）
+ * 用于 marked.parse 失败或返回 Promise 时，避免直接显示原始语法
+ */
+function syncMarkdownFallback(text: string): string {
+  const lines = text.split('\n')
+  const result: string[] = []
+  let inCode = false
+  let codeLang = ''
+  let codeLines: string[] = []
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
+
+    if (line.startsWith('```')) {
+      if (inCode) {
+        // 代码块结束
+        result.push(`<pre><code>${escapeHtml(codeLines.join('\n'))}</code></pre>`)
+        codeLines = []
+        codeLang = ''
+        inCode = false
+      } else {
+        // 代码块开始
+        codeLang = line.slice(3).trim()
+        inCode = true
+      }
+      continue
+    }
+
+    if (inCode) {
+      codeLines.push(escapeHtml(line))
+      continue
+    }
+
+    // 行内代码
+    let processed = line.replace(/`([^`]+)`/g, '<code>$1</code>')
+    // 加粗
+    processed = processed.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    processed = processed.replace(/__(.+?)__/g, '<strong>$1</strong>')
+    // 斜体
+    processed = processed.replace(/\*(.+?)\*/g, '<em>$1</em>')
+    processed = processed.replace(/_(.+?)_/g, '<em>$1</em>')
+    // 删除线
+    processed = processed.replace(/~~(.+?)~~/g, '<del>$1</del>')
+    // 链接
+    processed = processed.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
+    // 图片
+    processed = processed.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1">')
+    // 标题
+    const headingMatch = processed.match(/^(#{1,6})\s+(.*)$/)
+    if (headingMatch) {
+      const level = headingMatch[1].length
+      processed = `<h${level}>${headingMatch[2]}</h${level}>`
+    } else if (processed.startsWith('> ')) {
+      processed = `<blockquote>${processed.slice(2)}</blockquote>`
+    } else if (processed.startsWith('- ') || processed.startsWith('* ')) {
+      processed = `<li>${processed.slice(2)}</li>`
+    } else if (processed === '') {
+      processed = '<br>'
+    } else {
+      processed = `<p>${processed}</p>`
+    }
+
+    result.push(processed)
+  }
+
+  // 如果代码块没有闭合（流式传输中常见），仍然渲染已收集的内容
+  if (inCode) {
+    result.push(`<pre><code>${escapeHtml(codeLines.join('\n'))}</code></pre>`)
+  }
+
+  return result.join('\n')
 }
 
 /**
