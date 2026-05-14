@@ -18,7 +18,11 @@ export const useChatStore = defineStore('chat', {
     currentRunId: null,
     isSending: false,
     // 事件去重：跟踪已处理的事件 { "runId-seq": true }
-    processedEvents: {} as Record<string, boolean>
+    processedEvents: {} as Record<string, boolean>,
+    // 跟踪已有工具事件的 runId，用于在工具执行后创建新的文本气泡
+    runsWithTools: {} as Record<string, number>,
+    // 记录工具执行前已展示的文本长度，用于后续新气泡只显示增量
+    preToolTextLength: {} as Record<string, number>
   }),
 
   getters: {
@@ -726,6 +730,9 @@ export const useChatStore = defineStore('chat', {
       const kind = data?.kind
       const toolCallId = data?.toolCallId || String(seq)
 
+      // 标记此 runId 已有工具事件，后续文本需要新开气泡
+      this.runsWithTools[runId] = (this.runsWithTools[runId] || 0) + 1
+
       console.log(`🔧🔧🔧 Tool stream: runId=${runId}, seq=${seq}, phase=${phase}, tool=${tool}, toolCallId=${toolCallId}`)
       console.log(`📊 Current messages count: ${this.messages[sessionKey]?.length || 0}`)
 
@@ -741,6 +748,59 @@ export const useChatStore = defineStore('chat', {
       console.log(`🔍 Looking for message ${messageId}, found at index: ${existingIndex}`)
 
       if (phase === 'start') {
+        // 记录工具执行前已展示的文本长度，并冻结 ${runId}-text 消息
+        const preToolMsg = this.messages[sessionKey]?.find(m => m.id === `${runId}-text`)
+        if (preToolMsg && !preToolMsg.metadata?.frozen) {
+          // 如果 pre-tool 消息已有内容（可能来自 chat final 等 delta），
+          // 将其内容截断到工具执行前的最后一个句子/段落
+          const currentContent = preToolMsg.content
+          // 找到最后一个句号/问号/感叹号/换行符的位置，作为 pre-tool 文本的结尾
+          let cutPoint = currentContent.length
+          for (const marker of ['。\n', '\n\n', '\n', '。', '!', '?']) {
+            const idx = currentContent.lastIndexOf(marker)
+            if (idx !== -1 && idx < cutPoint - 2) {
+              cutPoint = idx + marker.length
+              break
+            }
+          }
+          // 如果没找到合适的分割点，就取前 100 字符（启发式）
+          if (cutPoint >= currentContent.length && currentContent.length > 100) {
+            cutPoint = Math.min(100, currentContent.length)
+          }
+
+          const frozenContent = cutPoint < currentContent.length
+            ? currentContent.substring(0, cutPoint)
+            : currentContent
+
+          this.preToolTextLength[runId] = frozenContent.length
+          // 更新 pre-tool 消息内容为截断后的内容并冻结
+          preToolMsg.content = frozenContent
+          preToolMsg.metadata = { ...preToolMsg.metadata, frozen: true }
+          preToolMsg.status = 'sent'
+          console.log(`📏 Pre-tool text frozen at length ${this.preToolTextLength[runId]}: "${frozenContent.substring(0, 50)}..."`)
+
+          // 如果有剩余内容，创建 after-tool 消息
+          if (cutPoint < currentContent.length) {
+            const afterToolMsg: Message = {
+              id: `${runId}-text-after-tool-1`,
+              role: preToolMsg.role,
+              content: currentContent.substring(cutPoint),
+              timestamp: Date.now(),
+              status: 'sent',
+              metadata: {
+                contentType: 'text',
+                source: 'extracted_from_pre_tool'
+              }
+            }
+            this.messages[sessionKey].push(afterToolMsg)
+            console.log(`   - Created after-tool message with extracted content`)
+          }
+        } else if (preToolMsg) {
+          this.preToolTextLength[runId] = preToolMsg.content.length
+        } else {
+          this.preToolTextLength[runId] = 0
+        }
+
         // 工具开始执行
         if (existingIndex === -1) {
           const args = data?.args
@@ -885,8 +945,10 @@ export const useChatStore = defineStore('chat', {
           console.log(`   - Finalized message at index ${index}`)
         })
 
-        // 清理已处理的事件记录
+        // 清理已处理的事件记录和工具跟踪
         this.clearProcessedEventsForRun(runId)
+        delete this.runsWithTools[runId]
+        delete this.preToolTextLength[runId]
 
         // 清除流式状态（包括超时）
         this.clearStreamingState()
@@ -1016,10 +1078,31 @@ export const useChatStore = defineStore('chat', {
       console.log(`   - Raw message:`, JSON.stringify(message).substring(0, 200))
       console.log(`   - Extracted content: "${newContent.substring(0, 100)}..."`)
       console.log(`   - Content type: ${contentType}`)
-      console.log(`   - Will use message ID: ${runId}-${contentType}`)
 
-      // 使用 runId-contentType 作为消息ID，这样不同类型的消息分开显示
-      const messageId = `${runId}-${contentType}`
+      // 关键修复：如果此 runId 已有工具事件，且当前是文本内容，
+      // 则在文本消息 ID 中加入 afterTool 后缀，创建新的气泡
+      const toolCount = this.runsWithTools[runId] || 0
+      let messageId: string
+      let afterToolContent: string | null = null
+      if (contentType === 'text' && toolCount > 0) {
+        messageId = `${runId}-text-after-tool-${toolCount}`
+        // 提取工具执行后的增量文本
+        const preLen = this.preToolTextLength[runId] || 0
+        if (preLen > 0 && newContent.length > preLen) {
+          afterToolContent = newContent.substring(preLen)
+        } else if (preLen === 0) {
+          afterToolContent = newContent
+        }
+        // 如果 afterToolContent 仍为空或为负数，跳过此事件
+        if (!afterToolContent && preLen > 0) {
+          console.log(`   - No new content after tool (preLen=${preLen}, contentLen=${newContent.length}), skipping`)
+          return
+        }
+      } else {
+        messageId = `${runId}-${contentType}`
+      }
+
+      console.log(`   - Will use message ID: ${messageId}`)
 
       // 查找现有消息
       const existingIndex = this.messages[targetSessionKey].findIndex(m => m.id === messageId)
@@ -1032,8 +1115,19 @@ export const useChatStore = defineStore('chat', {
         // 增量更新
         this.thinkingMessageId = null
 
+        // 跳过对已冻结消息的更新（工具执行后不应再修改 pre-tool 消息）
+        if (existingIndex !== -1) {
+          const existingMsg = this.messages[targetSessionKey][existingIndex]
+          if (existingMsg.metadata?.frozen) {
+            console.log(`   - Skipping delta: message ${messageId} is frozen`)
+            return
+          }
+        }
+
+        // 使用 afterToolContent（工具后增量文本）或 newContent
+        const effectiveContent = afterToolContent ?? newContent
+
         // 只有文本消息才设置 streamingMessageId（工具调用不应该显示游标）
-        // 并且确保当前没有完成这个 runId
         if (contentType === 'text' && this.currentRunId === runId) {
           this.streamingMessageId = messageId
         }
@@ -1041,11 +1135,11 @@ export const useChatStore = defineStore('chat', {
         if (existingIndex !== -1) {
           // 追加内容到现有消息（相同类型）
           const currentContent = this.messages[targetSessionKey][existingIndex].content
-          const appendedContent = this.appendTextContent(currentContent, newContent)
+          const appendedContent = this.appendTextContent(currentContent, effectiveContent)
 
           console.log(`📝 Appending to message ${messageId}:`)
           console.log(`   - Current: "${currentContent.substring(0, 30)}..."`)
-          console.log(`   - New: "${newContent.substring(0, 30)}..."`)
+          console.log(`   - New: "${effectiveContent.substring(0, 30)}..."`)
           console.log(`   - Result: "${appendedContent.substring(0, 30)}..."`)
 
           const updatedMessage = {
@@ -1058,12 +1152,12 @@ export const useChatStore = defineStore('chat', {
         } else {
           // 创建新的流式消息（新类型）
           console.log(`✨✨✨ Creating new streaming message ${messageId} (type: ${contentType})`)
-          console.log(`   - Content: "${newContent.substring(0, 50)}..."`)
+          console.log(`   - Content: "${effectiveContent.substring(0, 50)}..."`)
 
           const newMessage: Message = {
             id: messageId,
             role: message?.role || 'assistant',
-            content: newContent,
+            content: effectiveContent,
             timestamp: message?.timestamp || Date.now(),
             status: 'streaming',
             metadata: {
@@ -1109,8 +1203,10 @@ export const useChatStore = defineStore('chat', {
           console.log(`   - Finalized message at index ${index}`)
         })
 
-        // 清理已处理的事件记录
+        // 清理已处理的事件记录和工具跟踪
         this.clearProcessedEventsForRun(runId)
+        delete this.runsWithTools[runId]
+        delete this.preToolTextLength[runId]
       } else if (state === 'error') {
         console.error(`❌ Error in run ${runId}:`, payload.errorMessage)
         // 立即清除所有流式状态
@@ -1134,6 +1230,8 @@ export const useChatStore = defineStore('chat', {
           }
         })
         this.clearProcessedEventsForRun(runId)
+        delete this.runsWithTools[runId]
+        delete this.preToolTextLength[runId]
       } else if (state === 'aborted') {
         console.log(`⏹️ Run ${runId} aborted`)
         // 立即清除所有流式状态
@@ -1157,6 +1255,8 @@ export const useChatStore = defineStore('chat', {
           }
         })
         this.clearProcessedEventsForRun(runId)
+        delete this.runsWithTools[runId]
+        delete this.preToolTextLength[runId]
       }
 
       // 只在真正修改了messages后才触发响应式更新

@@ -68,6 +68,8 @@ export interface ChatState {
   currentRunId: string | null
   isSending: boolean
   processedEvents: Record<string, boolean>
+  runsWithTools: Record<string, number>
+  preToolTextLength: Record<string, number>
 }
 
 export interface SendMessageParams {

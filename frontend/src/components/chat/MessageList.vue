@@ -68,7 +68,7 @@ function getMessageTypePriority(message: Message): number {
   return 0 // 文本消息
 }
 
-// 排序后的消息列表：同一 runId 内，文本消息在前，工具消息在后
+// 排序后的消息列表：同一 runId 内，文本消息在前，工具消息在后，工具后文本在最后
 // 非 run 消息（用户消息、历史消息）保持原序
 const sortedMessages = computed(() => {
   const result = [...props.messages]
@@ -94,7 +94,7 @@ const sortedMessages = computed(() => {
     }
   }
 
-  // 对每个 run 内的消息按类型排序（文本在前，工具在后）
+  // 对每个 run 内的消息按类型排序（文本在前，工具在中，工具后文本在后）
   for (const [, indices] of runIndices) {
     const sorted = indices.map(i => result[i]).sort((a, b) => {
       const pa = getMessageTypePriority(a)
