@@ -1084,8 +1084,15 @@ export const useChatStore = defineStore('chat', {
       const toolCount = this.runsWithTools[runId] || 0
       let messageId: string
       let afterToolContent: string | null = null
-      if (contentType === 'text' && toolCount > 0) {
-        messageId = `${runId}-text-after-tool-${toolCount}`
+
+      // 兜底：即使 runsWithTools 已被 lifecycle end 提前清理，
+      // 如果会话中已存在 after-tool 消息，也复用它，避免创建重复气泡
+      const existingAfterTool = contentType === 'text'
+        ? this.messages[targetSessionKey].find(m => m.id.startsWith(`${runId}-text-after-tool-`))
+        : undefined
+
+      if (contentType === 'text' && (toolCount > 0 || existingAfterTool)) {
+        messageId = existingAfterTool?.id || `${runId}-text-after-tool-${toolCount}`
         // 提取工具执行后的增量文本
         const preLen = this.preToolTextLength[runId] || 0
         if (preLen > 0 && newContent.length > preLen) {
@@ -1142,11 +1149,15 @@ export const useChatStore = defineStore('chat', {
           console.log(`   - New: "${effectiveContent.substring(0, 30)}..."`)
           console.log(`   - Result: "${appendedContent.substring(0, 30)}..."`)
 
+          const existingMsg = this.messages[targetSessionKey][existingIndex]
+          // 如果 lifecycle end 已提前 finalize，保持 sent 状态，避免又变回 streaming
+          const newStatus = existingMsg.status === 'sent' ? 'sent' : 'streaming'
+
           const updatedMessage = {
-            ...this.messages[targetSessionKey][existingIndex],
+            ...existingMsg,
             content: appendedContent,
             timestamp: message?.timestamp || Date.now(),
-            status: 'streaming' as const
+            status: newStatus as const
           }
           this.messages[targetSessionKey].splice(existingIndex, 1, updatedMessage)
         } else {
