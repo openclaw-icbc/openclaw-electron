@@ -75,8 +75,13 @@
             <span>{{ job.agentId }}</span>
           </div>
 
-          <div v-if="job.sessionKey" class="cron-job-session">
+          <div class="cron-job-session-target">
             <span class="label">会话:</span>
+            <span>{{ job.sessionTarget === 'isolated' ? '独立会话' : '主会话' }}</span>
+          </div>
+
+          <div v-if="job.sessionKey" class="cron-job-session">
+            <span class="label">Key:</span>
             <span>{{ job.sessionKey }}</span>
           </div>
 
@@ -200,6 +205,8 @@ async function handleAddJob() {
   }
 
   editingJobId.value = null
+  // 使用nextTick确保computed属性（currentEditJob）更新后再显示对话框
+  await nextTick()
   cronJobDialogRef.value?.show()
 }
 
@@ -222,10 +229,9 @@ async function onAddJobConfirm(data: CronJobFormData) {
       }
     }
 
-    // Build payload based on agentId
-    // main agent requires systemEvent, others use agentTurn
+    // Build payload based on payloadKind
     let payload: any
-    if (data.agentId === 'main') {
+    if (data.payloadKind === 'systemEvent') {
       payload = {
         kind: 'systemEvent',
         text: data.message.trim()
@@ -324,9 +330,9 @@ async function onEditJobConfirm(data: CronJobFormData) {
       }
     }
 
-    // Build payload based on agentId
+    // Build payload based on payloadKind
     let payload: any
-    if (data.agentId === 'main') {
+    if (data.payloadKind === 'systemEvent') {
       payload = {
         kind: 'systemEvent',
         text: data.message.trim()

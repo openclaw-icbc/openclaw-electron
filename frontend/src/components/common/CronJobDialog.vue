@@ -30,12 +30,11 @@
               <div class="form-group">
                 <label>Agent *</label>
                 <select v-model="form.agentId" class="dialog-select" @change="handleAgentChange">
-                  <option value="main">main (系统事件)</option>
                   <option v-for="agent in agents" :key="agent.id" :value="agent.id">
                     {{ agent.name || agent.id }}
                   </option>
                 </select>
-                <span class="form-hint">main agent需要使用systemEvent类型</span>
+                <span class="form-hint">选择Agent后，执行类型和会话目标会自动联动</span>
               </div>
               <div class="form-group checkbox-group">
                 <label>
@@ -92,20 +91,29 @@
             <div class="form-section">
               <h4>执行设置</h4>
               <div class="form-group">
-                <label>{{ form.agentId === 'main' ? '事件消息' : '任务消息' }} *</label>
+                <label>执行类型</label>
+                <select v-model="form.payloadKind" class="dialog-select" @change="handlePayloadKindChange">
+                  <option value="systemEvent">发布消息到主时间线</option>
+                  <option value="agentTurn">运行助手任务</option>
+                </select>
+                <span class="form-hint">主会话需要systemEvent，独立会话需要agentTurn</span>
+              </div>
+              <div class="form-group">
+                <label>{{ form.payloadKind === 'systemEvent' ? '事件消息' : '任务提示' }} *</label>
                 <textarea
                   v-model="form.message"
                   class="dialog-textarea"
                   rows="3"
-                  :placeholder="form.agentId === 'main' ? '系统事件消息' : '任务消息内容'"
+                  :placeholder="form.payloadKind === 'systemEvent' ? '系统事件消息' : '助手任务提示内容'"
                 ></textarea>
               </div>
               <div class="form-group">
                 <label>会话目标</label>
-                <select v-model="form.sessionTarget" class="dialog-select">
+                <select v-model="form.sessionTarget" class="dialog-select" @change="handleSessionTargetChange">
                   <option value="main">主会话</option>
                   <option value="isolated">独立会话</option>
                 </select>
+                <span class="form-hint">切换会话目标时，执行类型会自动联动调整</span>
               </div>
               <div class="form-group">
                 <label>会话Key（可选）</label>
@@ -126,8 +134,8 @@
               </div>
             </div>
 
-            <!-- 可选参数（仅对非main agent显示） -->
-            <div v-if="form.agentId !== 'main'" class="form-section">
+            <!-- 可选参数（仅对agentTurn显示） -->
+            <div v-if="form.payloadKind === 'agentTurn'" class="form-section">
               <h4>可选参数</h4>
               <div class="form-group">
                 <label>模型覆盖（可选）</label>
@@ -216,6 +224,7 @@ export interface CronJobFormData {
   everyUnit: 'minutes' | 'hours' | 'days'
   cronExpr: string
   message: string
+  payloadKind: 'systemEvent' | 'agentTurn'
   sessionTarget: 'main' | 'isolated'
   sessionKey: string
   wakeMode: 'next-heartbeat' | 'now'
@@ -265,6 +274,7 @@ const defaultForm: CronJobFormData = {
   everyUnit: 'hours',
   cronExpr: '0 9 * * *',
   message: '',
+  payloadKind: 'systemEvent',
   sessionTarget: 'main',
   sessionKey: '',
   wakeMode: 'next-heartbeat',
@@ -286,27 +296,36 @@ const isValid = computed(() => {
            : form.value.cronExpr.trim())
 })
 
-// 监听agentId变化，如果是main则清空某些字段，并设置正确的sessionTarget
+// 监听agentId变化：非main agent默认用isolated+agentTurn，main agent保持当前选择不变
 watch(() => form.value.agentId, (newAgentId) => {
-  if (newAgentId === 'main') {
-    // main agent使用systemEvent，清空agentTurn相关字段
-    form.value.model = ''
-    form.value.thinking = ''
-    form.value.timeout = 0
-    form.value.fallbacks = ''
-    form.value.lightContext = false
-    // main agent使用main sessionTarget
-    if (form.value.sessionTarget === 'isolated') {
-      form.value.sessionTarget = 'main'
-    }
-  } else {
-    // 非main agent使用isolated sessionTarget
+  if (newAgentId !== 'main') {
+    // 非main agent只能用isolated+agentTurn
     form.value.sessionTarget = 'isolated'
+    form.value.payloadKind = 'agentTurn'
   }
+  // main agent不强制改变，用户可以自由选择isolated+agentTurn或main+systemEvent
 })
 
 function handleAgentChange() {
   // Agent change handled by watch
+}
+
+function handlePayloadKindChange() {
+  // payloadKind变化时联动sessionTarget
+  if (form.value.payloadKind === 'systemEvent') {
+    form.value.sessionTarget = 'main'
+  } else {
+    form.value.sessionTarget = 'isolated'
+  }
+}
+
+function handleSessionTargetChange() {
+  // sessionTarget变化时联动payloadKind
+  if (form.value.sessionTarget === 'main') {
+    form.value.payloadKind = 'systemEvent'
+  } else {
+    form.value.payloadKind = 'agentTurn'
+  }
 }
 
 function show() {
@@ -322,6 +341,7 @@ function show() {
       everyUnit: 'hours',
       cronExpr: '0 9 * * *',
       message: '',
+      payloadKind: props.existingJob.payload?.kind || (props.existingJob.sessionTarget === 'isolated' ? 'agentTurn' : 'systemEvent'),
       sessionTarget: props.existingJob.sessionTarget || 'main',
       sessionKey: props.existingJob.sessionKey || '',
       wakeMode: props.existingJob.wakeMode || 'next-heartbeat',
