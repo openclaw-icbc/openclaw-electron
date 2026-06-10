@@ -213,8 +213,8 @@ export class GatewayClient extends EventEmitter {
     this.log('info', `Signature: ${signature.substring(0, 20)}...`);
 
     const params = {
-      minProtocol: 3,
-      maxProtocol: 3,
+      minProtocol: 4,
+      maxProtocol: 4,
       client: {
         id: GATEWAY_CLIENT_IDS.MACOS_APP,
         version: '1.0.0',
