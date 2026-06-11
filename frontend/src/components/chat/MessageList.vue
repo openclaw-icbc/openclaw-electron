@@ -51,77 +51,10 @@ const props = withDefaults(defineProps<Props>(), {
 const containerRef = ref<HTMLElement>()
 const showThinking = computed(() => !!props.thinkingMessageId)
 
-// 提取消息的 runId
-// 消息ID格式：
-//   ${runId}-tool-${toolCallId}      (工具消息，toolCallId 可能包含 '-')
-//   ${runId}-text                    (文本消息)
-//   ${runId}-text-after-tool-N       (工具后文本)
-//   ${runId}-thinking                (思考消息)
-//   ${runId}-agent_error             (错误消息)
-function extractRunId(messageId: string): string {
-  // 优先匹配更长的 -text-after-tool- 后缀
-  const textAfterIdx = messageId.lastIndexOf('-text-after-tool-')
-  if (textAfterIdx !== -1) return messageId.substring(0, textAfterIdx)
-  // 匹配 -tool- (toolCallId 可能包含 '-'，所以用 lastIndexOf)
-  const toolIdx = messageId.lastIndexOf('-tool-')
-  if (toolIdx !== -1) return messageId.substring(0, toolIdx)
-  // 其他格式 (-text, -thinking, -agent_error) 去掉最后一段
-  const parts = messageId.split('-')
-  if (parts.length >= 2) {
-    return parts.slice(0, -1).join('-')
-  }
-  return messageId
-}
-
-// 获取消息的类型优先级（用于排序）
-function getMessageTypePriority(message: Message): number {
-  const type = message.metadata?.type
-  if (type === 'tool_call' || type === 'tool_result' || type === 'tool_error') return 1
-  if (message.role === 'user') return -1 // 用户消息保持原序
-  return 0 // 文本消息
-}
-
-// 排序后的消息列表：同一 runId 内，文本消息在前，工具消息在后，工具后文本在最后
-// 非 run 消息（用户消息、历史消息）保持原序
-const sortedMessages = computed(() => {
-  const result = [...props.messages]
-
-  // 收集所有 run 消息的索引
-  const runIndices = new Map<string, number[]>()
-
-  for (let i = 0; i < result.length; i++) {
-    const msg = result[i]
-    const isRunMessage = msg.id.includes('-tool-') ||
-      msg.id.includes('-text') ||
-      msg.id.includes('-tool_call') ||
-      msg.id.includes('-tool_result') ||
-      msg.id.includes('-thinking') ||
-      msg.id.includes('-agent_error')
-
-    if (isRunMessage) {
-      const runId = extractRunId(msg.id)
-      if (!runIndices.has(runId)) {
-        runIndices.set(runId, [])
-      }
-      runIndices.get(runId)!.push(i)
-    }
-  }
-
-  // 对每个 run 内的消息按类型排序（文本在前，工具在中，工具后文本在后）
-  for (const [, indices] of runIndices) {
-    const sorted = indices.map(i => result[i]).sort((a, b) => {
-      const pa = getMessageTypePriority(a)
-      const pb = getMessageTypePriority(b)
-      if (pa !== pb) return pa - pb
-      return 0
-    })
-    for (let i = 0; i < indices.length; i++) {
-      result[indices[i]] = sorted[i]
-    }
-  }
-
-  return result
-})
+// 直接使用插入顺序渲染消息
+// 消息在 store 中已按正确的时间顺序插入（文本 → 工具 → 工具后文本）
+// 之前按类型优先级排序会破坏这个顺序，导致所有文本消息排到工具消息前面
+const sortedMessages = computed(() => props.messages)
 
 // 检测用户是否手动滚动（距离底部超过150px）
 const isUserScrolledUp = computed(() => {
@@ -136,15 +69,21 @@ const previousMessageCount = ref(0)
 // 上一次的消息数组引用，用于检测会话切换
 const previousMessagesRef = ref<Message[] | null>(null)
 
+// 跟踪滚动高度，用于检测内容增长时的自动滚动
+const lastScrollHeight = ref(0)
+// 跟踪滚动位置，用于区分"内容增长"和"用户手动滚动"
+const lastScrollTop = ref<number | null>(null)
+
 // 自动滚动到底部
 const scrollToBottom = (force = false) => {
   nextTick(() => {
     if (containerRef.value) {
-      // force=true时强制滚动（新消息、会话切换等）
-      // force=false时，只在用户没有向上滚动时才滚动
       if (force || !isUserScrolledUp.value) {
         containerRef.value.scrollTop = containerRef.value.scrollHeight
       }
+      // 在 DOM 更新后记录最新的滚动高度和位置
+      lastScrollHeight.value = containerRef.value.scrollHeight
+      lastScrollTop.value = containerRef.value.scrollTop
     }
   })
 }
@@ -162,22 +101,40 @@ watch(() => props.messages, (newMessages) => {
     scrollToBottom(true)
   } else if (currentCount === previousMessageCount.value && props.streamingMessageId) {
     // 消息数量未变但有流式消息，说明是内容更新
-    // 只在用户没有向上滚动时滚动
-    scrollToBottom(false)
+    // 在 nextTick 中检测内容增长（此时 DOM 已更新）
+    const prevHeight = lastScrollHeight.value
+    const prevTop = lastScrollTop.value
+    nextTick(() => {
+      if (!containerRef.value) return
+      const newHeight = containerRef.value.scrollHeight
+      const newTop = containerRef.value.scrollTop
+      const contentGrew = newHeight > prevHeight
+      // 如果 scrollTop 没变，说明用户没有手动滚动，是内容增长撑大了容器
+      const userScrolled = prevTop !== null && newTop !== prevTop
+
+      if (contentGrew && !userScrolled) {
+        // 内容增长且用户未手动滚动 → 强制跟随到底部
+        containerRef.value.scrollTop = newHeight
+      } else if (!isUserScrolledUp.value) {
+        containerRef.value.scrollTop = newHeight
+      }
+      lastScrollHeight.value = newHeight
+      lastScrollTop.value = newTop
+    })
   }
 
   previousMessageCount.value = currentCount
   previousMessagesRef.value = newMessages
 }, { deep: true })
 
-// 监听流式消息ID变化
+// 监听流式消息ID变化（如从工具消息切换到 after-tool 文本消息）
 watch(() => props.streamingMessageId, () => {
-  scrollToBottom()
+  scrollToBottom(true)
 })
 
 // 监听思考状态变化
 watch(() => props.thinkingMessageId, () => {
-  scrollToBottom()
+  scrollToBottom(true)
 })
 
 defineExpose({

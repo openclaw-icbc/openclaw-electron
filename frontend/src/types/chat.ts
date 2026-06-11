@@ -68,8 +68,10 @@ export interface ChatState {
   currentRunId: string | null
   isSending: boolean
   processedEvents: Record<string, boolean>
+  // 跟踪已有工具事件的 runId，值为工具计数器（第几个工具），用于区分工具间文本
   runsWithTools: Record<string, number>
-  preToolTextLength: Record<string, number>
+  // 记录工具消息的插入位置，用于后续 after-tool 文本定位
+  runToolPositions: Record<string, number>
 }
 
 export interface SendMessageParams {
