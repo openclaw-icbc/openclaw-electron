@@ -6,6 +6,23 @@ import { defineStore } from 'pinia'
 import type { ChatState, Message, Session } from '@/types/chat'
 import { sendMessage, getChatHistory, listSessions, deleteSession as deleteSessionApi, patchSession, abortChat } from '@/api/chat'
 
+/** 判断 metadata type 是否是工具相关类型 */
+function isToolMetadataType(type: string | undefined): boolean {
+  return type === 'tool_call' || type === 'tool_result' || type === 'tool_error'
+}
+
+/** 根据工具名称推断 kind（用于图标显示） */
+function inferToolKind(toolName: string | undefined): string {
+  if (!toolName) return ''
+  const name = toolName.toLowerCase()
+  if (/search|搜索/.test(name)) return 'search'
+  if (/^(exec|bash|shell|terminal|run|command)/.test(name)) return 'bash'
+  if (/fetch|http|request|webfetch|web_fetch/.test(name)) return 'fetch'
+  if (/browser|浏览器/.test(name)) return 'browser'
+  if (/^(read|write|edit|file|patch|ls|cat|glob|grep)/.test(name)) return 'read'
+  return ''
+}
+
 export const useChatStore = defineStore('chat', {
   state: (): ChatState => ({
     sessions: [],
@@ -153,10 +170,11 @@ export const useChatStore = defineStore('chat', {
                   if (part && typeof part === 'object') {
                     // Handle OpenAI format content parts
                     if (part.type === 'text' && part.text) return part.text
-                    if (part.type === 'image_url') return '[图片]'
-                    if (part.type === 'tool_use' || part.type === 'tool_use_call') return `[工具调用: ${part.name || part.id || 'unknown'}]`
-                    if (part.type === 'tool_result') return `[工具结果]`
-                    if (part.content) return part.content
+                    if (part.type === 'image_url' || part.type === 'image') return '[图片]'
+                    // OpenClaw 格式：toolCall (历史中工具调用块)
+                    if (part.type === 'toolCall' || part.type === 'tool_use' || part.type === 'tool_use_call') return `[工具调用: ${part.name || part.id || 'unknown'}]`
+                    if (part.type === 'tool_result' || part.type === 'toolResult') return `[工具结果]`
+                    if (part.content) return typeof part.content === 'string' ? part.content : JSON.stringify(part.content)
                     if (part.text) return part.text
                     // For unknown object types, try to extract useful info
                     if (part.type) return `[${part.type}]`
@@ -172,16 +190,17 @@ export const useChatStore = defineStore('chat', {
               let metadataType = msg.metadata?.type || msg.meta?.type
               let toolName = msg.toolName || msg.tool_name || msg.tool || msg.name
 
-              // 检查原始内容数组中是否有 tool_use 块（历史记录中的工具调用）
+              // 检查原始内容数组中是否有 toolCall / tool_use 块（历史记录中的工具调用）
               const rawContent = msg.content || msg.text || msg.body || msg.message
               if (Array.isArray(rawContent) && !metadataType) {
                 for (const part of rawContent) {
                   if (part && typeof part === 'object') {
-                    if (part.type === 'tool_use' || part.type === 'tool_use_call') {
+                    // OpenClaw 格式用 "toolCall"，也兼容 OpenAI 的 "tool_use"
+                    if (part.type === 'toolCall' || part.type === 'tool_use' || part.type === 'tool_use_call') {
                       metadataType = 'tool_call'
                       if (!toolName) toolName = part.name || part.id || 'unknown'
                     }
-                    if (part.type === 'tool_result') {
+                    if (part.type === 'tool_result' || part.type === 'toolResult') {
                       metadataType = 'tool_result'
                       if (!toolName) toolName = part.toolName || part.name || 'unknown'
                     }
@@ -190,20 +209,12 @@ export const useChatStore = defineStore('chat', {
               }
 
               // 如果还没设置 metadataType，检查原始角色
+              // OpenClaw 历史消息中工具结果用 role: "toolResult"
               if (!metadataType) {
                 if (originalRole === 'tool' || originalRole === 'toolresult' || originalRole === 'tool_result' || originalRole === 'function') {
-                  const contentStr = typeof content === 'string' ? content : ''
-                  if (contentStr.includes('[工具调用:') || contentStr.includes('[toolCall]') || contentStr.includes('tool_use')) {
-                    metadataType = 'tool_call'
-                    if (!toolName) {
-                      const match = contentStr.match(/\[工具调用:\s*([^\]]+)\]/)
-                      if (match) toolName = match[1]
-                    }
-                  } else if (contentStr.includes('[工具结果]') || contentStr.includes('[toolResult]') || contentStr.includes('tool_result')) {
-                    metadataType = 'tool_result'
-                  } else {
-                    metadataType = 'tool_result'
-                  }
+                  // toolResult 角色消息一定是工具结果
+                  metadataType = 'tool_result'
+                  if (!toolName && msg.toolName) toolName = msg.toolName
                 }
               }
 
@@ -211,6 +222,46 @@ export const useChatStore = defineStore('chat', {
               if (metadataType && !toolName && typeof content === 'string') {
                 const match = content.match(/\[工具调用:\s*([^\]]+)\]/)
                 if (match) toolName = match[1]
+              }
+
+              // 从原始内容块中提取工具调用的参数和结果，用于展开详情
+              let toolArgs: any = undefined
+              let toolResultData: any = undefined
+              let toolCallId: string | undefined = undefined
+              let toolTitle: string | undefined = undefined
+              let isError = false
+
+              // 情况1: assistant 消息中包含 toolCall 块 → 提取参数
+              if (Array.isArray(rawContent)) {
+                for (const part of rawContent) {
+                  if (part && typeof part === 'object') {
+                    // OpenClaw 格式用 "toolCall"，兼容 OpenAI 的 "tool_use"
+                    if (part.type === 'toolCall' || part.type === 'tool_use' || part.type === 'tool_use_call') {
+                      toolArgs = part.arguments || part.input || part.args
+                      toolCallId = part.id || part.toolCallId
+                      toolTitle = part.title || part.toolTitle || part.name
+                    }
+                  }
+                }
+              }
+
+              // 情况2: toolResult 角色的独立消息 → 提取结果
+              // OpenClaw 格式: { role: "toolResult", toolCallId, toolName, content: [{type:"text", text:"..."}], isError }
+              if (metadataType === 'tool_result') {
+                toolCallId = toolCallId || msg.toolCallId || msg.tool_call_id
+                toolTitle = toolTitle || msg.toolName || msg.tool_name
+                isError = msg.isError === true || msg.is_error === true
+
+                // 从 content 数组中提取文本结果
+                const resultContent = msg.content
+                if (Array.isArray(resultContent)) {
+                  const textParts = resultContent
+                    .filter((p: any) => p && typeof p === 'object' && p.type === 'text' && p.text)
+                    .map((p: any) => p.text)
+                  toolResultData = textParts.length === 1 ? textParts[0] : (textParts.length > 0 ? textParts.join('\n') : undefined)
+                } else if (typeof resultContent === 'string' && resultContent) {
+                  toolResultData = resultContent
+                }
               }
 
               return {
@@ -225,11 +276,26 @@ export const useChatStore = defineStore('chat', {
                   ...(msg.metadata || {}),
                   ...(msg.meta || {}),
                   ...(metadataType ? { type: metadataType } : {}),
-                  ...(toolName ? { toolName } : {})
+                  ...(toolName ? { toolName } : {}),
+                  // 历史消息中的工具调用已完成，设置 phase 为 'result'
+                  // ToolCallItem 依赖 phase 来决定显示"调用中"还是"已完成"
+                  ...(isToolMetadataType(metadataType) ? { phase: 'result' as const } : {}),
+                  // 根据工具名称推断 kind，用于 ToolCallItem 显示对应图标
+                  ...(isToolMetadataType(metadataType) ? { kind: inferToolKind(toolName) } : {}),
+                  ...(toolArgs !== undefined ? { args: toolArgs } : {}),
+                  ...(toolResultData !== undefined ? { result: toolResultData } : {}),
+                  ...(toolCallId ? { toolCallId } : {}),
+                  ...(toolTitle ? { toolTitle } : {}),
+                  ...(isError ? { isError: true } : {}),
                 }
               }
             })
           : []
+
+        // 合并配对的 tool_call 和 tool_result 消息
+        // OpenClaw 历史中，工具调用（assistant 的 toolCall 块）和结果（toolResult 消息）是分开的
+        // 但实时渲染中它们合并为同一条消息，这里做同样的合并以保持一致性
+        this.mergeToolCallPairs(messages)
 
         this.messages[sessionKey] = messages
         console.log(`Loaded ${messages.length} messages for session ${sessionKey}`)
@@ -730,9 +796,6 @@ export const useChatStore = defineStore('chat', {
       const kind = data?.kind
       const toolCallId = data?.toolCallId || String(seq)
 
-      // 标记此 runId 已有工具事件，后续文本需要新开气泡
-      this.runsWithTools[runId] = (this.runsWithTools[runId] || 0) + 1
-
       console.log(`🔧🔧🔧 Tool stream: runId=${runId}, seq=${seq}, phase=${phase}, tool=${tool}, toolCallId=${toolCallId}`)
       console.log(`📊 Current messages count: ${this.messages[sessionKey]?.length || 0}`)
 
@@ -741,13 +804,17 @@ export const useChatStore = defineStore('chat', {
         this.messages[sessionKey] = []
       }
 
-      // 使用 runId-tool-seq 作为消息ID，每个工具调用都有独立的消息气泡
-      const messageId = `${runId}-tool-${seq}`
+      // 使用 runId-tool-toolCallId 作为消息ID，toolCallId 是跨 start/update/result 的稳定关联 ID
+      // 这样同一工具调用的所有阶段都能找到并更新同一条消息，而非创建重复消息
+      const messageId = `${runId}-tool-${toolCallId}`
       const existingIndex = this.messages[sessionKey].findIndex(m => m.id === messageId)
 
       console.log(`🔍 Looking for message ${messageId}, found at index: ${existingIndex}`)
 
       if (phase === 'start') {
+        // 仅在 start 阶段递增计数器，避免 update/result 导致计数器虚高
+        this.runsWithTools[runId] = (this.runsWithTools[runId] || 0) + 1
+
         // 记录工具执行前已展示的文本长度，并冻结 ${runId}-text 消息
         const preToolMsg = this.messages[sessionKey]?.find(m => m.id === `${runId}-text`)
         if (preToolMsg && !preToolMsg.metadata?.frozen) {
@@ -1516,6 +1583,64 @@ export const useChatStore = defineStore('chat', {
     },
 
     /**
+     * 合并配对的 tool_call 和 tool_result 历史消息
+     *
+     * OpenClaw 历史记录中，工具调用和结果是分开的两条消息：
+     * 1. assistant 消息中的 toolCall 内容块 → 映射为 tool_call 类型
+     * 2. toolResult 角色的独立消息 → 映射为 tool_result 类型
+     *
+     * 通过 toolCallId 配对后，将结果合并到 tool_call 消息中，移除独立的 tool_result 消息
+     * 这样历史渲染与实时渲染保持一致（一条消息同时包含参数和结果）
+     */
+    mergeToolCallPairs(messages: Message[]) {
+      // 建立 toolCallId → tool_call 消息索引的映射
+      const callIndexById = new Map<string, number>()
+      for (let i = 0; i < messages.length; i++) {
+        const msg = messages[i]
+        if (msg.metadata?.type === 'tool_call' && msg.metadata?.toolCallId) {
+          callIndexById.set(msg.metadata.toolCallId, i)
+        }
+      }
+
+      // 找出需要移除的 tool_result 消息索引
+      const toRemove = new Set<number>()
+
+      for (let i = 0; i < messages.length; i++) {
+        const msg = messages[i]
+        if (msg.metadata?.type !== 'tool_result') continue
+
+        const toolCallId = msg.metadata.toolCallId
+        if (!toolCallId) continue
+
+        const callIdx = callIndexById.get(toolCallId)
+        if (callIdx === undefined) continue
+
+        // 找到配对的 tool_call，将结果合并进去
+        const callMsg = messages[callIdx]
+        callMsg.metadata = {
+          ...callMsg.metadata,
+          phase: 'result' as const,
+          result: msg.metadata.result,
+          isError: msg.metadata.isError,
+          error: msg.metadata.error,
+        }
+
+        // 标记 tool_result 消息待移除
+        toRemove.add(i)
+        console.log(`🔗 Merged tool_result into tool_call: toolCallId=${toolCallId}, tool=${callMsg.metadata.toolName}`)
+      }
+
+      // 从后往前删除，避免索引偏移
+      if (toRemove.size > 0) {
+        const indices = Array.from(toRemove).sort((a, b) => b - a)
+        for (const idx of indices) {
+          messages.splice(idx, 1)
+        }
+        console.log(`🗑️ Removed ${toRemove.size} merged tool_result messages`)
+      }
+    },
+
+    /**
      * 标准化消息角色
      */
     normalizeRole(msg: any): 'user' | 'assistant' | 'system' {
@@ -1524,6 +1649,9 @@ export const useChatStore = defineStore('chat', {
         role = 'assistant'
       } else if (role === 'human') {
         role = 'user'
+      } else if (role === 'toolResult' || role === 'tool_result' || role === 'tool') {
+        // OpenClaw 历史消息中工具结果用 role: "toolResult"
+        role = 'system'
       }
       // 如果不是有效的角色，默认为assistant
       if (role !== 'user' && role !== 'assistant' && role !== 'system') {

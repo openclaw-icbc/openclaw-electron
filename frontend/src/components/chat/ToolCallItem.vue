@@ -3,7 +3,26 @@
     <!-- 工具调用头部 -->
     <div class="tool-call-header" @click="toggleExpand">
       <div class="tool-icon">
-        <component :is="toolIcon" />
+        <!-- 搜索类工具 -->
+        <svg v-if="toolKind === 'search'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>
+        </svg>
+        <!-- 终端/Bash 类工具 -->
+        <svg v-else-if="toolKind === 'bash' || toolKind === 'terminal'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="4 17 10 11 4 5"/><line x1="12" x2="20" y1="19" y2="19"/>
+        </svg>
+        <!-- 浏览器/网络类工具 -->
+        <svg v-else-if="toolKind === 'browser' || toolKind === 'web' || toolKind === 'fetch'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/>
+        </svg>
+        <!-- 文件读写类工具 -->
+        <svg v-else-if="toolKind === 'read' || toolKind === 'file'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M8 13h2"/><path d="M8 17h2"/><path d="M14 13h2"/><path d="M14 17h2"/>
+        </svg>
+        <!-- 默认：闪电（表示执行/动作） -->
+        <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/>
+        </svg>
       </div>
       <div class="tool-info">
         <div class="tool-title">{{ toolTitle }}</div>
@@ -72,7 +91,10 @@ const errorMessage = computed(() => props.message.metadata?.error)
 const messageStatus = computed(() => props.message.status)
 
 const canExpand = computed(() => {
-  return toolArgs.value && Object.keys(toolArgs.value).length > 0
+  const hasArgs = toolArgs.value && Object.keys(toolArgs.value).length > 0
+  const hasResult = toolPhase.value === 'result' && (toolResult.value != null || hasError.value)
+  const hasProgress = toolPhase.value === 'update' && !!partialResult.value
+  return hasArgs || hasResult || hasProgress
 })
 
 const statusText = computed(() => {
@@ -83,13 +105,8 @@ const statusText = computed(() => {
   return ''
 })
 
-const toolIcon = computed(() => {
-  // 根据工具类型返回不同图标
-  const kind = props.message.metadata?.kind
-  if (kind === 'search') return 'SearchIcon'
-  if (kind === 'bash') return 'TerminalIcon'
-  if (kind === 'browser') return 'GlobeIcon'
-  return 'ToolIcon'
+const toolKind = computed(() => {
+  return props.message.metadata?.kind || ''
 })
 
 function toggleExpand() {
@@ -104,50 +121,6 @@ function formatJSON(data: any): string {
     return JSON.stringify(data, null, 2)
   } catch {
     return String(data)
-  }
-}
-</script>
-
-<script lang="ts">
-// 图标组件
-const SearchIcon = {
-  template: `
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-      <path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1.007 1.007 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0z"/>
-    </svg>
-  `
-}
-
-const TerminalIcon = {
-  template: `
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-      <path d="M6 12.796V3.204L11.481 8 6 12.796zm.659.753 5.48-4.796a1 1 0 0 0 0-1.506L6.66 2.451C6.011 1.885 5 2.345 5 3.204v9.592a1 1 0 0 0 1.659.753z"/>
-    </svg>
-  `
-}
-
-const GlobeIcon = {
-  template: `
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-      <path d="M8 0a8 8 0 1 0 0 16A8 8 0 0 0 8 0zM4.285 12.433c.378-.377.888-.591 1.416-.591.529 0 .963.233 1.274.615.09.109.135.237.135.376 0 .273-.22.494-.494.494H4.285zm8.43 0c-.378-.377-.888-.591-1.416-.591-.529 0-.963.233-1.274.615-.09.109-.135.237-.135.376 0 .273.22.494.494.494h2.332zM8 1.07c-2.34 0-4.38 1.17-5.5 2.93h11C12.38 2.24 10.34 1.07 8 1.07zM2.5 5.5c-.28 0-.5.22-.5.5s.22.5.5.5h11c.28 0 .5-.22.5-.5s-.22-.5-.5-.5h-11zm0 3c-.28 0-.5.22-.5.5s.22.5.5.5h11c.28 0 .5-.22.5-.5s-.22-.5-.5-.5h-11zm0 3c-.28 0-.5.22-.5.5s.22.5.5.5h11c.28 0 .5-.22.5-.5s-.22-.5-.5-.5h-11z"/>
-    </svg>
-  `
-}
-
-const ToolIcon = {
-  template: `
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-      <path d="M8.186 1.113a.5.5 0 0 0-.372 0L1.846 3.5l2.404.961L10.404 2l-2.218-.887zm3.564 1.426L5.596 5 8 5.961 14.154 3.5l-2.404-.961zm3.25 1.7-6.5 2.6v7.922l6.5-2.6V4.24zM7.5 14.762V6.838L1 4.239v7.923l6.5 2.6zM7.443.184a1.5 1.5 0 0 1 1.114 0l7.129 2.852A.5.5 0 0 1 16 3.5v8.662a1 1 0 0 1-.629.928l-7.185 2.874a.5.5 0 0 1-.372 0L.63 13.09a1 1 0 0 1-.63-.928V3.5a.5.5 0 0 1 .314-.464L7.443.184z"/>
-    </svg>
-  `
-}
-
-export default {
-  components: {
-    SearchIcon,
-    TerminalIcon,
-    GlobeIcon,
-    ToolIcon
   }
 }
 </script>
@@ -217,17 +190,14 @@ export default {
 
 .tool-update .tool-icon {
   background: hsl(45, 93%, 47% / 0.2);
-  color: hsl(45, 93%, 50%);
 }
 
 .tool-result .tool-icon {
   background: hsl(142, 76%, 36% / 0.2);
-  color: hsl(142, 76%, 45%);
 }
 
 .has-error .tool-icon {
   background: hsl(var(--destructive) / 0.2);
-  color: hsl(var(--destructive) / 0.9);
 }
 
 .tool-info {

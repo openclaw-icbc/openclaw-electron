@@ -51,8 +51,21 @@ const props = withDefaults(defineProps<Props>(), {
 const containerRef = ref<HTMLElement>()
 const showThinking = computed(() => !!props.thinkingMessageId)
 
-// 提取消息的 runId（消息ID格式：runId-type 或 runId-tool-seq）
+// 提取消息的 runId
+// 消息ID格式：
+//   ${runId}-tool-${toolCallId}      (工具消息，toolCallId 可能包含 '-')
+//   ${runId}-text                    (文本消息)
+//   ${runId}-text-after-tool-N       (工具后文本)
+//   ${runId}-thinking                (思考消息)
+//   ${runId}-agent_error             (错误消息)
 function extractRunId(messageId: string): string {
+  // 优先匹配更长的 -text-after-tool- 后缀
+  const textAfterIdx = messageId.lastIndexOf('-text-after-tool-')
+  if (textAfterIdx !== -1) return messageId.substring(0, textAfterIdx)
+  // 匹配 -tool- (toolCallId 可能包含 '-'，所以用 lastIndexOf)
+  const toolIdx = messageId.lastIndexOf('-tool-')
+  if (toolIdx !== -1) return messageId.substring(0, toolIdx)
+  // 其他格式 (-text, -thinking, -agent_error) 去掉最后一段
   const parts = messageId.split('-')
   if (parts.length >= 2) {
     return parts.slice(0, -1).join('-')
