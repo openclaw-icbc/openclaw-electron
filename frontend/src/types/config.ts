@@ -1,6 +1,4 @@
-/**
- * 配置相关类型定义
- */
+import type { TeamConfig } from './team'
 
 export interface AppConfig {
   gateway: {
@@ -16,6 +14,8 @@ export interface AppConfig {
     y?: number
   }
   sessionsExpanded?: boolean
+  expertsExpanded?: boolean
+  teams?: TeamConfig[]
 }
 
 export interface ConfigState {
@@ -27,4 +27,5 @@ export interface ConfigState {
   sessionsExpanded: boolean
   lastSessionKey?: string
   sidebarWidth: number
+  expertsExpanded: boolean
 }

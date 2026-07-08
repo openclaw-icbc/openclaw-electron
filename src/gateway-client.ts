@@ -459,6 +459,22 @@ export class GatewayClient extends EventEmitter {
     return this.request('cron.run', { id, mode: mode || 'force' });
   }
 
+  async subscribeSession(key: string, agentId?: string): Promise<any> {
+    return this.request('sessions.messages.subscribe', { key, agentId });
+  }
+
+  async unsubscribeSession(key: string, agentId?: string): Promise<any> {
+    return this.request('sessions.messages.unsubscribe', { key, agentId });
+  }
+
+  async getSessionHistory(key: string, agentId?: string, limit?: number): Promise<any> {
+    return this.request('sessions.history', { key, agentId, limit: limit || 200 });
+  }
+
+  async createSession(key: string, label?: string): Promise<any> {
+    return this.request('sessions.create', { key, label });
+  }
+
   // Presence method
   async getSystemPresence(): Promise<any> {
     return this.request('system-presence', {});

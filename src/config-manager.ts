@@ -8,6 +8,21 @@ export interface GatewayConnectionConfig {
   password?: string;
 }
 
+export interface TeamMember {
+  agentId: string;
+  role: string;
+  emoji: string;
+}
+
+export interface TeamConfig {
+  id: string;
+  name: string;
+  description: string;
+  emoji: string;
+  leadAgentId: string;
+  members: TeamMember[];
+}
+
 export interface AppConfig {
   gateway: GatewayConnectionConfig;
   lastSessionKey?: string;
@@ -17,6 +32,7 @@ export interface AppConfig {
     x?: number;
     y?: number;
   };
+  teams?: TeamConfig[];
 }
 
 const DEFAULT_CONFIG: AppConfig = {
@@ -86,5 +102,13 @@ export class ConfigManager {
 
   updateWindowBounds(bounds: { width: number; height: number; x?: number; y?: number }): boolean {
     return this.saveConfig({ windowBounds: bounds });
+  }
+
+  getTeams(): TeamConfig[] {
+    return this.config.teams || [];
+  }
+
+  saveTeams(teams: TeamConfig[]): boolean {
+    return this.saveConfig({ teams });
   }
 }

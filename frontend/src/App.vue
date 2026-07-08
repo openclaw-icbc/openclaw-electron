@@ -5,7 +5,7 @@
 
     <!-- Main App Panel -->
     <div id="app-panel" class="h-full flex flex-col">
-      <div class="flex h-full overflow-hidden">
+      <div class="flex h-full overflow-hidden min-w-0">
         <!-- Sidebar -->
         <div
           id="sidebar"
@@ -28,51 +28,64 @@
             ></div>
           </div>
 
-          <!-- Sidebar Content -->
+          <!-- Session List (contains 新建对话 + 专家入口 + 历史对话) -->
           <SessionList />
         </div>
 
         <!-- Main Content Area -->
-        <div class="flex-1 flex flex-col bg-background min-w-0 overflow-hidden">
-          <!-- Chat View -->
-          <div id="chat-view" class="flex-1 flex flex-col overflow-hidden">
-            <div class="chat-header">
-              <h3>{{ currentSessionTitle }}</h3>
-              <div class="flex items-center gap-4">
-                <div class="text-xs text-muted-foreground">{{ sessionStatus }}</div>
-                <button
-                  class="settings-btn"
-                  title="设置"
-                  @click="openSettings"
-                >
-                  <Icon name="settings" :size="18" />
-                </button>
-              </div>
-            </div>
+        <div class="flex-1 flex flex-col bg-background min-w-0 overflow-hidden min-h-0">
+          <!-- Expert Panel (replaces chat when open) -->
+          <template v-if="uiStore.expertPanelOpen">
+            <ExpertPanel />
+          </template>
 
-            <div class="chat-messages">
-              <WelcomeScreen v-if="!currentSessionKey" />
-              <MessageList
-                v-else
-                :messages="currentMessages"
-                :loading="loading"
-                :thinking-message-id="thinkingMessageId"
-                :streaming-message-id="streamingMessageId"
-                ref="messageListRef"
+          <!-- Chat View -->
+          <template v-else>
+            <div id="chat-view" class="flex-1 flex flex-col overflow-hidden">
+              <div class="chat-header">
+                <h3>{{ currentSessionTitle }}</h3>
+                <div class="flex items-center gap-4">
+                  <div class="text-xs text-muted-foreground">{{ sessionStatus }}</div>
+                  <button
+                    class="settings-btn"
+                    title="设置"
+                    @click="openSettings"
+                  >
+                    <Icon name="settings" :size="18" />
+                  </button>
+                </div>
+              </div>
+
+              <div class="chat-messages">
+                <WelcomeScreen v-if="!currentSessionKey" />
+                <NewSessionView
+                  v-else-if="currentMessages.length === 0 && !loading"
+                />
+                <MessageList
+                  v-else
+                  :messages="currentMessages"
+                  :loading="loading"
+                  :thinking-message-id="thinkingMessageId"
+                  :streaming-message-id="streamingMessageId"
+                  ref="messageListRef"
+                />
+              </div>
+
+              <MessageInput
+                v-if="currentSessionKey"
+                :disabled="!canSend"
+                :can-abort="canAbort"
+                :is-sending="chatStore.isSending"
+                @send="handleSendMessage"
+                @abort="handleAbort"
+                ref="messageInputRef"
               />
             </div>
-
-            <MessageInput
-              v-if="currentSessionKey"
-              :disabled="!canSend"
-              :can-abort="canAbort"
-              :is-sending="chatStore.isSending"
-              @send="handleSendMessage"
-              @abort="handleAbort"
-              ref="messageInputRef"
-            />
-          </div>
+          </template>
         </div>
+
+        <!-- Team Panel (right side, only in team mode) -->
+        <TeamPanel />
       </div>
     </div>
 
@@ -89,15 +102,18 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { storeToRefs } from 'pinia'
-import { useConfigStore, useGatewayStore, useChatStore, useUiStore } from '@/stores'
+import { useConfigStore, useGatewayStore, useChatStore, useUiStore, useAgentsStore, useTeamStore } from '@/stores'
 import { useChat, useGateway } from '@/composables'
 
 // Components
 import TitleBar from '@/components/common/TitleBar.vue'
 import SessionList from '@/components/session/SessionList.vue'
+import ExpertPanel from '@/components/chat/ExpertPanel.vue'
 import WelcomeScreen from '@/components/chat/WelcomeScreen.vue'
+import NewSessionView from '@/components/chat/NewSessionView.vue'
 import MessageList from '@/components/chat/MessageList.vue'
 import MessageInput from '@/components/chat/MessageInput.vue'
+import TeamPanel from '@/components/chat/TeamPanel.vue'
 import SettingsDialog from '@/components/settings/SettingsDialog.vue'
 import Toast from '@/components/common/Toast.vue'
 import Loading from '@/components/common/Loading.vue'
@@ -109,6 +125,8 @@ const configStore = useConfigStore()
 const gatewayStore = useGatewayStore()
 const chatStore = useChatStore()
 const uiStore = useUiStore()
+const agentsStore = useAgentsStore()
+const teamStore = useTeamStore()
 
 // Composables
 const { sendMessage } = useChat()
@@ -127,6 +145,17 @@ const { sessions, currentSessionKey, currentMessages, loading, thinkingMessageId
 // Computed
 const currentSessionTitle = computed(() => {
   if (!currentSessionKey.value) return '选择或创建一个对话'
+
+  if (chatStore.currentTeamId) {
+    const team = teamStore.getTeamById(chatStore.currentTeamId)
+    if (team) return team.name
+  }
+
+  if (chatStore.currentAgentId && chatStore.currentAgentId !== 'main') {
+    const agent = agentsStore.getAgentById(chatStore.currentAgentId)
+    if (agent) return agent.name
+  }
+
   const session = sessions.value.find(s => s.key === currentSessionKey.value)
   return session?.label || '未知会话'
 })
@@ -145,12 +174,47 @@ const canAbort = computed(() => {
   return chatStore.isSending
 })
 
+/**
+ * 从 Lead session key 中提取 channel 部分
+ * e.g. "agent:essay-team-lead:team-essay-abc123" → "team-essay-abc123"
+ */
+function extractChannel(sessionKey: string): string {
+  const parts = sessionKey.split(':')
+  return parts.slice(2).join(':')
+}
+
+/**
+ * 为成员生成隔离的 session key（和 Lead 共享同一个 channel）
+ * e.g. member="student-agent", channel="team-essay-abc123" → "agent:student-agent:team-essay-abc123"
+ */
+function buildMemberSessionKey(agentId: string, channel: string): string {
+  return `agent:${agentId}:${channel}`
+}
+
 // Methods
 async function handleSendMessage(message: string) {
   if (!canSend.value || !currentSessionKey.value) return
 
   try {
-    await sendMessage(currentSessionKey.value, message)
+    let finalMessage = message
+
+    // 新的 team session：在消息前面注入路由指令，告诉 Lead 用独立 sessionKey 与成员通信
+    // 这样每个 team 对话的成员 session 是隔离的，不会污染 main session 和历史会话
+    if (chatStore.currentTeamId && !chatStore.knownServerSessions[currentSessionKey.value]) {
+      const team = teamStore.getTeamById(chatStore.currentTeamId)
+      if (team) {
+        const channel = extractChannel(currentSessionKey.value)
+        const routingLines = team.members
+          .filter(m => m.agentId !== team.leadAgentId)
+          .map(m => `- ${m.role}: sessionKey = "${buildMemberSessionKey(m.agentId, channel)}"`)
+          .join('\n')
+
+        finalMessage = `[SYSTEM-ROUTING] 本次对话中，调用 sessions_send 时必须使用 sessionKey 参数（不要用 agentId），各成员的 sessionKey 如下：\n${routingLines}\n[/SYSTEM-ROUTING]\n\n${message}`
+        console.log('[App] New team session — routing info injected')
+      }
+    }
+
+    await sendMessage(currentSessionKey.value, finalMessage)
   } catch (error: any) {
     uiStore.showToast(error.message || '发送消息失败', 'error')
   }
@@ -193,14 +257,63 @@ function stopResize() {
 }
 
 // Watch for session changes and load messages
+// 切换会话时同步更新 teamStore 的活跃 session（状态按 session 隔离）
+watch(currentSessionKey, (newKey) => {
+  if (newKey) teamStore.setActiveSession(newKey)
+}, { flush: 'sync' })
+
 watch(currentSessionKey, async (newSessionKey, oldSessionKey) => {
-  if (newSessionKey && newSessionKey !== oldSessionKey) {
+  if (newSessionKey) {
     try {
       await chatStore.loadMessages(newSessionKey)
     } catch (error: any) {
-      console.error('Failed to load messages:', error)
-      uiStore.showToast(error.message || '加载消息失败', 'error')
+      console.warn('Session has no history yet (new session):', newSessionKey)
+      chatStore.messages[newSessionKey] = []
     }
+  }
+})
+
+// Watch for team changes and sync teamStore + subscribe member sessions
+watch(() => chatStore.currentTeamId, async (newTeamId, oldTeamId) => {
+  if (newTeamId) {
+    teamStore.setActiveTeam(newTeamId)
+
+    // 订阅团队成员 session（延迟确保连接就绪）
+    // 使用 Lead session key 的 channel 派生成员的 session key，保证每个 team 对话隔离
+    const team = teamStore.getTeamById(newTeamId)
+    const leadSessionKey = chatStore.currentSessionKey
+    const channel = leadSessionKey ? extractChannel(leadSessionKey) : null
+
+    if (team && channel) {
+      setTimeout(async () => {
+        for (const member of team.members) {
+          if (member.agentId !== team.leadAgentId) {
+            const memberKey = buildMemberSessionKey(member.agentId, channel)
+            chatStore.messages[memberKey] = chatStore.messages[memberKey] || []
+            try {
+              await window.electronAPI.subscribeSession({ key: memberKey })
+              console.log(`[App] Subscribed to member session: ${memberKey}`)
+            } catch (e: any) {
+              console.warn(`[App] Failed to subscribe member session: ${memberKey}`, e.message)
+            }
+          }
+        }
+      }, 500)
+    }
+  } else {
+    // 退出 team 模式时取消订阅（用之前的 channel 派生成员 key）
+    if (oldTeamId) {
+      const oldTeam = teamStore.getTeamById(oldTeamId)
+      const oldChannel = chatStore.currentSessionKey ? extractChannel(chatStore.currentSessionKey) : null
+      if (oldTeam && oldChannel) {
+        for (const member of oldTeam.members) {
+          if (member.agentId !== oldTeam.leadAgentId) {
+            window.electronAPI.unsubscribeSession({ key: buildMemberSessionKey(member.agentId, oldChannel) }).catch(() => {})
+          }
+        }
+      }
+    }
+    teamStore.setActiveTeam(null)
   }
 })
 
@@ -234,6 +347,8 @@ onMounted(async () => {
       setTimeout(async () => {
         if (gatewayStore.connected) {
           try {
+            await teamStore.loadTeams()
+            await agentsStore.loadAgents(teamStore.teams)
             await chatStore.loadSessions()
           } catch (error: any) {
             console.error('Failed to load sessions after connection:', error)
@@ -266,6 +381,7 @@ onUnmounted(() => {
   flex-direction: column;
   border-right: 1px solid hsl(var(--border));
   position: relative;
+  overflow: hidden;
 }
 
 .resizer {

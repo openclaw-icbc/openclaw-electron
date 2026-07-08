@@ -14,6 +14,7 @@ export const useConfigStore = defineStore('config', {
       password: ''
     },
     sessionsExpanded: true,
+    expertsExpanded: true,
     lastSessionKey: undefined,
     sidebarWidth: 280
   }),
@@ -34,6 +35,7 @@ export const useConfigStore = defineStore('config', {
         const config = await getConfig()
         this.gateway = config.gateway
         this.sessionsExpanded = config.sessionsExpanded ?? true
+        this.expertsExpanded = config.expertsExpanded ?? true
         this.lastSessionKey = config.lastSessionKey
       } catch (error) {
         console.error('Failed to load config:', error)
@@ -48,6 +50,7 @@ export const useConfigStore = defineStore('config', {
         const success = await saveConfig({
           gateway: this.gateway,
           sessionsExpanded: this.sessionsExpanded,
+          expertsExpanded: this.expertsExpanded,
           lastSessionKey: this.lastSessionKey
         })
         return success
@@ -94,6 +97,11 @@ export const useConfigStore = defineStore('config', {
      */
     setSidebarWidth(width: number) {
       this.sidebarWidth = Math.max(200, Math.min(800, width))
+    },
+
+    async toggleExpertsExpanded() {
+      this.expertsExpanded = !this.expertsExpanded
+      await this.save()
     }
   }
 })

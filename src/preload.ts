@@ -32,6 +32,16 @@ export interface ElectronAPI {
   // Agents
   listAgents: () => Promise<{ success: boolean; data?: any; error?: string }>;
 
+  // Teams
+  getTeams: () => Promise<any[]>;
+  saveTeams: (teams: any[]) => Promise<boolean>;
+
+  // Session subscriptions
+  subscribeSession: (params: { key: string; agentId?: string }) => Promise<{ success: boolean; data?: any; error?: string }>;
+  unsubscribeSession: (params: { key: string; agentId?: string }) => Promise<{ success: boolean; data?: any; error?: string }>;
+  getSessionHistory: (params: { key: string; agentId?: string; limit?: number }) => Promise<{ success: boolean; data?: any; error?: string }>;
+  createSession: (params: { key: string; label?: string }) => Promise<{ success: boolean; data?: any; error?: string }>;
+
   // Cron Jobs
   listCronJobs: (params?: any) => Promise<{ success: boolean; data?: any; error?: string }>;
   addCronJob: (job: any) => Promise<{ success: boolean; data?: any; error?: string }>;
@@ -84,6 +94,14 @@ const electronAPI: ElectronAPI = {
   patchSession: (key, patch) => ipcRenderer.invoke('patch-session', key, patch),
 
   listAgents: () => ipcRenderer.invoke('agents-list'),
+
+  getTeams: () => ipcRenderer.invoke('teams-get'),
+  saveTeams: (teams) => ipcRenderer.invoke('teams-save', teams),
+
+  subscribeSession: (params) => ipcRenderer.invoke('sessions-subscribe', params),
+  unsubscribeSession: (params) => ipcRenderer.invoke('sessions-unsubscribe', params),
+  getSessionHistory: (params) => ipcRenderer.invoke('sessions-history', params),
+  createSession: (params) => ipcRenderer.invoke('sessions-create', params),
 
   listCronJobs: (params) => ipcRenderer.invoke('cron-list', params),
   addCronJob: (job) => ipcRenderer.invoke('cron-add', job),

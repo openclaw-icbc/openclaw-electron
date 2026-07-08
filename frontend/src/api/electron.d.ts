@@ -33,6 +33,15 @@ export interface ElectronAPI {
   // Agent 相关
   listAgents(): Promise<{ success: boolean; data?: any; error?: string }>
 
+  // Team 相关
+  getTeams(): Promise<any[]>
+  saveTeams(teams: any[]): Promise<boolean>
+
+  // Session 订阅
+  subscribeSession(params: { key: string; agentId?: string }): Promise<{ success: boolean; data?: any; error?: string }>
+  unsubscribeSession(params: { key: string; agentId?: string }): Promise<{ success: boolean; data?: any; error?: string }>
+  getSessionHistory(params: { key: string; agentId?: string; limit?: number }): Promise<{ success: boolean; data?: any; error?: string }>
+
   // 定时任务相关
   listCronJobs(params?: any): Promise<{ success: boolean; data?: any; error?: string }>
   addCronJob(job: any): Promise<{ success: boolean; data?: any; error?: string }>

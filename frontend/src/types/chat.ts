@@ -57,21 +57,45 @@ export interface CreateSessionParams {
   metadata?: Record<string, any>
 }
 
+/** 任务计划中的单个任务 */
+export interface TaskPlanTask {
+  id: string
+  title: string
+  assignee: string
+  description?: string
+  depends_on?: string[]
+  status?: 'pending' | 'working' | 'completed' | 'error'
+}
+
+/** 从 Lead Agent 输出中提取的任务计划 */
+export interface TaskPlan {
+  goal: string
+  tasks: TaskPlanTask[]
+  /** 提取来源的消息 ID */
+  sourceMessageId?: string
+  /** 创建时间 */
+  createdAt: number
+}
+
 export interface ChatState {
   sessions: Session[]
   currentSessionKey: string | null
+  currentAgentId: string | null
+  currentTeamId: string | null
   messages: Record<string, Message[]>
   thinkingMessageId: string | null
   streamingMessageId: string | null
   streamingTimeout: number | null
   loading: boolean
+  sessionsLoading: boolean
   currentRunId: string | null
   isSending: boolean
   processedEvents: Record<string, boolean>
-  // 跟踪已有工具事件的 runId，值为工具计数器（第几个工具），用于区分工具间文本
   runsWithTools: Record<string, number>
-  // 记录工具消息的插入位置，用于后续 after-tool 文本定位
   runToolPositions: Record<string, number>
+  knownServerSessions: Record<string, boolean>
+  /** 每个 session 的任务计划（从 Lead Agent 的 json-plan 块中提取） */
+  taskPlans: Record<string, TaskPlan | null>
 }
 
 export interface SendMessageParams {

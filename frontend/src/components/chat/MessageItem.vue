@@ -114,6 +114,21 @@ const renderedContent = computed(() => {
     }).filter(Boolean).join('')
   }
 
+  // 过滤掉任务计划的结构化标记（json-plan 块和进度标记）
+  // 这些内容由 TaskPlanCard 组件独立渲染，不应作为普通文本显示
+  // 注意：同时处理已闭合（```...```）和流式中未闭合（```... 无结尾）的情况
+  content = content
+    .replace(/```json-plan\s*\n?[\s\S]*?\n?```/g, '')
+    .replace(/```json-plan\s*\n?[\s\S]*/g, '')
+    .replace(/\[PLAN_PROGRESS\]\s*T\d+:\w+/g, '')
+    .replace(/\[SYSTEM-ROUTING\][\s\S]*?\[\/SYSTEM-ROUTING\]\s*/g, '')
+    .trim()
+
+  // 如果过滤后内容为空（消息只包含结构化标记），直接返回空不渲染
+  if (!content) {
+    return ''
+  }
+
   // 处理工具调用和思考标记，使其更醒目
   content = content
     // 处理 [工具调用: xxx]

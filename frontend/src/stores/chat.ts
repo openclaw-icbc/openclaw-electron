@@ -3,8 +3,45 @@
  */
 
 import { defineStore } from 'pinia'
-import type { ChatState, Message, Session } from '@/types/chat'
+import type { ChatState, Message, Session, TaskPlan, TaskPlanTask } from '@/types/chat'
 import { sendMessage, getChatHistory, listSessions, deleteSession as deleteSessionApi, patchSession, abortChat } from '@/api/chat'
+
+/** 从文本中提取 ```json-plan ... ``` 代码块 */
+function extractPlanJSON(content: string): TaskPlan | null {
+  const match = content.match(/```json-plan\s*\n?([\s\S]*?)\n?```/)
+  if (!match) return null
+  try {
+    const parsed = JSON.parse(match[1].trim())
+    if (parsed && Array.isArray(parsed.tasks)) {
+      return {
+        goal: parsed.goal || '',
+        tasks: parsed.tasks.map((t: any) => ({
+          id: t.id || '',
+          title: t.title || '',
+          assignee: t.assignee || '',
+          description: t.description || '',
+          depends_on: t.depends_on || t.dependsOn || [],
+          status: 'pending'
+        })),
+        createdAt: Date.now()
+      }
+    }
+  } catch (e) {
+    console.warn('Failed to parse json-plan block:', e)
+  }
+  return null
+}
+
+/** 从文本中提取 [PLAN_PROGRESS] T1:completed 标记 */
+function extractProgressMarkers(content: string): Array<{ taskId: string; status: string }> {
+  const markers: Array<{ taskId: string; status: string }> = []
+  const regex = /\[PLAN_PROGRESS\]\s*(T\d+):(\w+)/g
+  let match
+  while ((match = regex.exec(content)) !== null) {
+    markers.push({ taskId: match[1], status: match[2] })
+  }
+  return markers
+}
 
 /** 判断 metadata type 是否是工具相关类型 */
 function isToolMetadataType(type: string | undefined): boolean {
@@ -27,19 +64,21 @@ export const useChatStore = defineStore('chat', {
   state: (): ChatState => ({
     sessions: [],
     currentSessionKey: null,
+    currentAgentId: null,
+    currentTeamId: null,
     messages: {},
     thinkingMessageId: null,
     streamingMessageId: null,
     streamingTimeout: null as number | null,
     loading: false,
+    sessionsLoading: false,
     currentRunId: null,
     isSending: false,
-    // 事件去重：跟踪已处理的事件 { "runId-seq": true }
     processedEvents: {} as Record<string, boolean>,
-    // 跟踪已有工具事件的 runId，值为工具计数器（第几个工具）
     runsWithTools: {} as Record<string, number>,
-    // 记录工具消息的插入位置，用于后续 after-tool 文本正确定位
-    runToolPositions: {} as Record<string, number>
+    runToolPositions: {} as Record<string, number>,
+    knownServerSessions: {} as Record<string, boolean>,
+    taskPlans: {} as Record<string, TaskPlan | null>
   }),
 
   getters: {
@@ -52,10 +91,67 @@ export const useChatStore = defineStore('chat', {
       return state.sessions.find(s => s.key === state.currentSessionKey) || null
     },
     hasCurrentSession: (state) => !!state.currentSessionKey,
-    sessionCount: (state) => state.sessions.length
+    sessionCount: (state) => state.sessions.length,
+    /** 当前会话的任务计划 */
+    currentTaskPlan: (state): TaskPlan | null => {
+      if (!state.currentSessionKey) return null
+      return state.taskPlans[state.currentSessionKey] || null
+    }
   },
 
   actions: {
+    /**
+     * 从消息内容中检测并提取任务计划（json-plan 块）和进度标记
+     * 在每次内容更新时调用，支持流式场景
+     */
+    checkAndExtractTaskPlan(sessionKey: string, content: string, messageId?: string) {
+      if (!content) return
+
+      // 快速检查：不包含任何标记则跳过（避免高频 delta 事件的正则开销）
+      const hasJsonPlan = content.includes('json-plan')
+      const hasProgress = content.includes('[PLAN_PROGRESS]')
+      if (!hasJsonPlan && !hasProgress) return
+
+      // 1. 检测 json-plan 块 → 创建/更新任务计划
+      if (content.includes('json-plan')) {
+        const plan = extractPlanJSON(content)
+        if (plan) {
+          plan.sourceMessageId = messageId
+          // 保留已有的状态（进度标记可能已经更新了部分任务）
+          const existing = this.taskPlans[sessionKey]
+          if (existing) {
+            // 合并：用新的 plan 结构，但保留已有的 status
+            for (const newTask of plan.tasks) {
+              const existingTask = existing.tasks.find(t => t.id === newTask.id)
+              if (existingTask && existingTask.status && existingTask.status !== 'pending') {
+                newTask.status = existingTask.status
+              }
+            }
+          }
+          this.taskPlans[sessionKey] = plan
+          console.log(`[TaskPlan] Plan extracted for session ${sessionKey}:`, plan.tasks.length, 'tasks')
+        }
+      }
+
+      // 2. 检测 [PLAN_PROGRESS] 标记 → 更新任务状态
+      const markers = extractProgressMarkers(content)
+      if (markers.length > 0) {
+        const plan = this.taskPlans[sessionKey]
+        if (plan) {
+          for (const marker of markers) {
+            const task = plan.tasks.find(t => t.id === marker.taskId)
+            if (task) {
+              const validStatuses = ['pending', 'working', 'completed', 'error']
+              if (validStatuses.includes(marker.status)) {
+                task.status = marker.status as TaskPlanTask['status']
+                console.log(`[TaskPlan] Task ${marker.taskId} → ${marker.status}`)
+              }
+            }
+          }
+        }
+      }
+    },
+
     /**
      * 检查事件是否已处理（去重机制）
      * @param eventType 事件类型 ('chat' | 'agent')
@@ -104,7 +200,7 @@ export const useChatStore = defineStore('chat', {
      */
     async loadSessions() {
       try {
-        this.loading = true
+        this.sessionsLoading = true
         const response = await listSessions()
 
         // Gateway might return different data structures
@@ -130,11 +226,82 @@ export const useChatStore = defineStore('chat', {
               status: s.status || 'active'
             }))
           : []
+
+        // 标记所有已知 session（后续 sendMessage 时可跳过 createSession）
+        for (const s of this.sessions) {
+          this.knownServerSessions[s.key] = true
+        }
+
+        // 美化 session 标签（显示团队/专家名称）
+        await this.enhanceSessionLabels()
       } catch (error: any) {
         console.error('Failed to load sessions:', error)
         throw error
       } finally {
-        this.loading = false
+        this.sessionsLoading = false
+      }
+    },
+
+    /**
+     * 美化 session 列表标签：根据 session key 解析出团队/专家名称
+     * 在 loadSessions 之后调用，需要 teams 和 agents 已加载
+     */
+    async enhanceSessionLabels() {
+      try {
+        const { useTeamStore } = await import('./team')
+        const { useAgentsStore } = await import('./agents')
+        const teamStore = useTeamStore()
+        const agentsStore = useAgentsStore()
+
+        for (const session of this.sessions) {
+          const parts = session.key.split(':')
+          if (parts.length < 3 || parts[0] !== 'agent') continue
+
+          const agentId = parts[1]
+          const channel = parts.slice(2).join(':')
+
+          // 团队会话：匹配 team-<teamId> 或 team-<teamId>-<random>
+          if (channel.startsWith('team-')) {
+            const matchedTeam = teamStore.teams.find((t) =>
+              channel === `team-${t.id}` || channel.startsWith(`team-${t.id}-`)
+            )
+            if (matchedTeam) {
+              // 区分 Lead 会话和成员会话
+              if (agentId === matchedTeam.leadAgentId) {
+                // Lead 会话：显示团队名
+                const preview = session.lastMessage
+                  ? session.lastMessage.substring(0, 25)
+                  : ''
+                session.label = matchedTeam.name +
+                  (preview ? ` - ${preview}` : '')
+              } else {
+                // 成员会话：显示 "团队名-成员角色"
+                const member = matchedTeam.members.find(m => m.agentId === agentId)
+                const memberRole = member?.role || agentsStore.getAgentById(agentId)?.name || agentId
+                const preview = session.lastMessage
+                  ? session.lastMessage.substring(0, 25)
+                  : ''
+                session.label = `${matchedTeam.name}-${memberRole}` +
+                  (preview ? ` - ${preview}` : '')
+              }
+              continue
+            }
+          }
+
+          // 专家会话：如果 label 是原始 key 或 'Untitled'，替换为 agent 名称
+          if (!session.label || session.label === session.key || session.label === 'Untitled') {
+            const agent = agentsStore.getAgentById(agentId)
+            if (agent) {
+              const preview = session.lastMessage
+                ? session.lastMessage.substring(0, 25)
+                : ''
+              session.label = agent.name +
+                (preview ? ` - ${preview}` : '')
+            }
+          }
+        }
+      } catch {
+        // teams/agents 未加载时跳过
       }
     },
 
@@ -299,6 +466,13 @@ export const useChatStore = defineStore('chat', {
 
         this.messages[sessionKey] = messages
         console.log(`Loaded ${messages.length} messages for session ${sessionKey}`)
+
+        // 从历史消息中提取已有的任务计划（json-plan 块和进度标记）
+        for (const msg of messages) {
+          if (typeof msg.content === 'string' && msg.content) {
+            this.checkAndExtractTaskPlan(sessionKey, msg.content, msg.id)
+          }
+        }
       } catch (error: any) {
         console.error('Failed to load messages:', error)
         throw error
@@ -337,12 +511,71 @@ export const useChatStore = defineStore('chat', {
         // 设置发送状态
         this.isSending = true
 
+        // 清洗内容用于生成 label（去掉注入的路由指令）
+        const cleanContent = content.replace(/\[SYSTEM-ROUTING\][\s\S]*?\[\/SYSTEM-ROUTING\]\s*/g, '').trim()
+
+        // 确保 session 在服务端已存在（非 main session 不会自动创建）
+        if (!this.knownServerSessions[sessionKey]) {
+          try {
+            console.log('Creating new session on server:', sessionKey)
+            await window.electronAPI.createSession({ key: sessionKey, label: cleanContent.substring(0, 30) })
+            this.knownServerSessions[sessionKey] = true
+          } catch (createError: any) {
+            console.warn('Session may already exist:', createError.message)
+            this.knownServerSessions[sessionKey] = true
+          }
+        }
+
         // 发送到 Gateway
         const runId = await sendMessage({ sessionKey, message: content, attachments })
         console.log('Message sent, runId:', runId)
 
         // 保存当前 runId
         this.currentRunId = runId
+
+        // 如果是新会话，立即添加到本地会话列表（不用等刷新）
+        if (!this.sessions.find(s => s.key === sessionKey)) {
+          const parts = sessionKey.split(':')
+          const agentId = parts.length >= 2 ? parts[1] : 'unknown'
+
+          // 构建可读标签：团队/专家名称 + 消息预览
+          let label = cleanContent.substring(0, 25) + (cleanContent.length > 25 ? '...' : '')
+          if (this.currentTeamId) {
+            // 延迟 import 避免循环依赖
+            import('./team').then(({ useTeamStore }) => {
+              const team = useTeamStore().getTeamById(this.currentTeamId!)
+              if (team) {
+                const s = this.sessions.find(s => s.key === sessionKey)
+                if (s) s.label = `${team.name} - ${label}`
+              }
+            })
+          } else if (agentId !== 'main') {
+            import('./agents').then(({ useAgentsStore }) => {
+              const agent = useAgentsStore().getAgentById(agentId)
+              if (agent) {
+                const s = this.sessions.find(s => s.key === sessionKey)
+                if (s) s.label = `${agent.name} - ${label}`
+              }
+            })
+          }
+
+          this.sessions.unshift({
+            key: sessionKey,
+            label,
+            agentId,
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+            messageCount: 1,
+            status: 'active'
+          })
+        }
+
+        // 本地更新已有会话的 metadata（避免 loadSessions 替换整个数组导致 UI 闪烁）
+        const existingSession = this.sessions.find(s => s.key === sessionKey)
+        if (existingSession) {
+          existingSession.updatedAt = Date.now()
+          existingSession.messageCount = (existingSession.messageCount || 0) + 1
+        }
 
         return runId
       } catch (error: any) {
@@ -423,6 +656,83 @@ export const useChatStore = defineStore('chat', {
      */
     setCurrentSession(sessionKey: string | null) {
       this.currentSessionKey = sessionKey
+    },
+
+    selectSessionByKey(sessionKey: string) {
+      this.currentSessionKey = sessionKey
+
+      const parts = sessionKey.split(':')
+      if (parts.length >= 3 && parts[0] === 'agent') {
+        const agentId = parts[1]
+        const channel = parts.slice(2).join(':')
+
+        this.currentAgentId = agentId
+
+        if (channel.startsWith('team-')) {
+          // channel 可能是旧格式 team-<teamId> 或新格式 team-<teamId>-<random>
+          // 提取 teamId 时需要匹配已知 team 列表
+          // 延迟 import 避免循环依赖
+          import('@/stores').then(({ useTeamStore }) => {
+            const teamStore = useTeamStore()
+            const matched = teamStore.teams.find((t: any) =>
+              channel === `team-${t.id}` || channel.startsWith(`team-${t.id}-`)
+            )
+            this.currentTeamId = matched ? matched.id : channel.substring(5)
+          })
+        } else {
+          this.currentTeamId = null
+        }
+      }
+    },
+
+    setCurrentAgent(agentId: string | null) {
+      this.currentAgentId = agentId
+    },
+
+    setCurrentTeam(teamId: string | null) {
+      this.currentTeamId = teamId
+    },
+
+    /**
+     * 生成唯一的 session key
+     * - 专家: agent:<agentId>:<uniqueId>
+     * - 团队: agent:<leadAgentId>:team-<teamId>-<uniqueId>
+     *
+     * 每次调用都生成新 key，确保每次从专家面板/下拉框进入都是新会话
+     */
+    buildSessionKey(agentId: string, teamId?: string | null): string {
+      const uniqueId = Date.now().toString(36) + Math.random().toString(36).substring(2, 6)
+      if (teamId) {
+        return `agent:${agentId}:team-${teamId}-${uniqueId}`
+      }
+      return `agent:${agentId}:${uniqueId}`
+    },
+
+    switchToAgent(agentId: string) {
+      this.currentAgentId = agentId
+      this.currentTeamId = null
+      this.currentSessionKey = this.buildSessionKey(agentId)
+    },
+
+    switchToTeam(leadAgentId: string, teamId: string) {
+      this.currentAgentId = leadAgentId
+      this.currentTeamId = teamId
+      this.currentSessionKey = this.buildSessionKey(leadAgentId, teamId)
+
+      // 初始化团队计划
+      import('./team').then(({ useTeamStore }) => {
+        const teamStore = useTeamStore()
+        const team = teamStore.getTeamById(teamId)
+        if (team) {
+          teamStore.initializePlan(this.currentSessionKey!, team)
+        }
+      })
+    },
+
+    switchToMain() {
+      this.currentAgentId = 'main'
+      this.currentTeamId = null
+      this.currentSessionKey = 'agent:main:main'
     },
 
     /**
@@ -1235,6 +1545,9 @@ export const useChatStore = defineStore('chat', {
             status: newStatus
           }
           this.messages[targetSessionKey].splice(existingIndex, 1, updatedMessage)
+
+          // 检测任务计划（json-plan 块和进度标记）
+          this.checkAndExtractTaskPlan(targetSessionKey, appendedContent, messageId)
         } else {
           // 创建新的流式消息
           console.log(`✨✨✨ Creating new streaming message ${messageId} (type: ${contentType}, afterTool: ${isAfterTool})`)
@@ -1260,6 +1573,9 @@ export const useChatStore = defineStore('chat', {
           } else {
             this.messages[targetSessionKey].push(newMessage)
           }
+
+          // 检测任务计划（json-plan 块和进度标记）
+          this.checkAndExtractTaskPlan(targetSessionKey, initialContent, messageId)
           console.log(`   - Total messages after creation: ${this.messages[targetSessionKey].length}`)
           console.log(`   - All message IDs:`, this.messages[targetSessionKey].map(m => m.id))
         }

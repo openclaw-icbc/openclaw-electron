@@ -10,6 +10,7 @@ export const useUiStore = defineStore('ui', {
     sidebarWidth: 280,
     settingsDialogOpen: false,
     settingsActiveTab: 'sessions',
+    expertPanelOpen: false,
     loading: false,
     loadingMessage: '加载中...',
     toasts: []
@@ -93,6 +94,21 @@ export const useUiStore = defineStore('ui', {
      */
     switchSettingsTab(tab: string) {
       this.settingsActiveTab = tab
+    },
+
+    /**
+     * 专家面板
+     */
+    toggleExpertPanel() {
+      this.expertPanelOpen = !this.expertPanelOpen
+    },
+
+    openExpertPanel() {
+      this.expertPanelOpen = true
+    },
+
+    closeExpertPanel() {
+      this.expertPanelOpen = false
     },
 
     /**

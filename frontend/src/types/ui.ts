@@ -6,6 +6,7 @@ export interface UiState {
   sidebarWidth: number
   settingsDialogOpen: boolean
   settingsActiveTab: string
+  expertPanelOpen: boolean
   loading: boolean
   loadingMessage: string
   toasts: Toast[]

@@ -4,6 +4,97 @@
 
 import { marked } from 'marked'
 
+// 允许渲染的 HTML 标签（覆盖 Markdown 输出及 MessageItem 里的工具徽章）
+const ALLOWED_TAGS = new Set([
+  'p', 'br', 'hr', 'div', 'span',
+  'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+  'strong', 'b', 'em', 'i', 'del', 's', 'u', 'a', 'img',
+  'ul', 'ol', 'li', 'blockquote',
+  'pre', 'code',
+  'table', 'thead', 'tbody', 'tr', 'th', 'td',
+  'svg', 'g', 'path', 'circle', 'rect', 'polyline', 'line'
+])
+
+const SVG_NS = 'http://www.w3.org/2000/svg'
+const SVG_TAGS = new Set(['svg', 'g', 'path', 'circle', 'rect', 'polyline', 'line', 'polygon'])
+
+// 允许保留的属性（style/script/事件处理器等会被过滤掉）
+const ALLOWED_ATTRS = new Set([
+  'class', 'href', 'src', 'alt', 'title', 'target', 'rel',
+  'width', 'height', 'viewbox', 'fill', 'stroke', 'stroke-width',
+  'stroke-linecap', 'stroke-linejoin', 'd', 'points', 'cx', 'cy', 'r', 'x', 'y'
+])
+
+// 直接丢弃的标签（包括其内容），防止注入全局样式/脚本或破坏页面结构
+const DROP_TAGS = new Set([
+  'style', 'script', 'iframe', 'object', 'embed',
+  'meta', 'link', 'head', 'body', 'html', 'form', 'input', 'button'
+])
+
+/**
+ * 白名单 HTML 消毒：移除/转义可能破坏页面布局的原始 HTML（
+ * <style>、<script>、未闭合标签、事件处理器等）
+ */
+function sanitizeHtml(html: string): string {
+  if (!html) return ''
+  try {
+    const parser = new DOMParser()
+    const doc = parser.parseFromString(html, 'text/html')
+
+    const cleanNode = (node: Node): Node | null => {
+      if (node.nodeType === Node.TEXT_NODE) {
+        return document.createTextNode(node.textContent || '')
+      }
+      if (node.nodeType !== Node.ELEMENT_NODE) return null
+
+      const el = node as Element
+      const tag = el.tagName.toLowerCase()
+
+      // 直接丢弃危险标签及其内容
+      if (DROP_TAGS.has(tag)) return null
+
+      // 不允许的标签直接“拆包”其文本和子节点
+      if (!ALLOWED_TAGS.has(tag)) {
+        const fragment = document.createDocumentFragment()
+        el.childNodes.forEach(child => {
+          const cleaned = cleanNode(child)
+          if (cleaned) fragment.appendChild(cleaned)
+        })
+        return fragment
+      }
+
+      const out = SVG_TAGS.has(tag)
+        ? document.createElementNS(SVG_NS, tag)
+        : document.createElement(tag)
+      Array.from(el.attributes).forEach(attr => {
+        const name = attr.name.toLowerCase()
+        if (ALLOWED_ATTRS.has(name)) {
+          out.setAttribute(attr.name, attr.value)
+        }
+      })
+
+      el.childNodes.forEach(child => {
+        const cleaned = cleanNode(child)
+        if (cleaned) out.appendChild(cleaned)
+      })
+      return out
+    }
+
+    const fragment = document.createDocumentFragment()
+    Array.from(doc.body.childNodes).forEach(child => {
+      const cleaned = cleanNode(child)
+      if (cleaned) fragment.appendChild(cleaned)
+    })
+
+    const wrapper = document.createElement('div')
+    wrapper.appendChild(fragment)
+    return wrapper.innerHTML
+  } catch (error) {
+    console.error('[sanitizeHtml] Failed to sanitize HTML:', error)
+    return escapeHtml(html.replace(/</g, ' <'))
+  }
+}
+
 /**
  * 将 Markdown 转换为 HTML
  */
@@ -21,7 +112,8 @@ export async function renderMarkdown(markdown: string | any[]): Promise<string> 
   }
   if (!markdown || typeof markdown !== 'string') return ''
   try {
-    return await marked(markdown)
+    const html = await marked(markdown)
+    return sanitizeHtml(html)
   } catch (error) {
     console.error('Failed to render markdown:', error)
     return escapeHtml(String(markdown))
@@ -48,13 +140,13 @@ export function renderMarkdownSync(markdown: string | any[]): string {
 
   try {
     const result = marked.parse(markdown)
-    if (typeof result === 'string') return result
+    if (typeof result === 'string') return sanitizeHtml(result)
     // marked.parse 返回 Promise（极少情况）：用轻量回退渲染
     console.warn('[renderMarkdownSync] marked.parse returned Promise, using fallback')
-    return syncMarkdownFallback(markdown)
+    return sanitizeHtml(syncMarkdownFallback(markdown))
   } catch (error) {
     console.error('[renderMarkdownSync] marked.parse error:', error)
-    return syncMarkdownFallback(markdown)
+    return sanitizeHtml(syncMarkdownFallback(markdown))
   }
 }
 

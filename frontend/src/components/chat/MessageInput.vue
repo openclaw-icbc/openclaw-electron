@@ -4,39 +4,43 @@
       <textarea
         ref="textareaRef"
         v-model="messageText"
-        class="textarea pr-16"
+        class="textarea"
         :placeholder="placeholder"
         rows="3"
         :disabled="disabled || isSending"
         @input="handleInput"
         @keydown="handleKeydown"
       ></textarea>
-      <button
-        v-if="!isSending"
-        class="btn btn-primary absolute bottom-3 right-3"
-        :disabled="!canSend"
-        @click="handleSend"
-      >
-        发送
-      </button>
-      <button
-        v-else
-        class="btn btn-stop absolute bottom-3 right-3"
-        :disabled="!canAbort"
-        @click="handleAbort"
-        title="停止生成"
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-          <rect x="6" y="6" width="12" height="12" rx="1" />
-        </svg>
-        <span class="ml-1">停止</span>
-      </button>
+      <div class="input-actions">
+        <AgentSelector />
+        <button
+          v-if="!isSending"
+          class="btn btn-primary"
+          :disabled="!canSend"
+          @click="handleSend"
+        >
+          发送
+        </button>
+        <button
+          v-else
+          class="btn btn-stop"
+          :disabled="!canAbort"
+          @click="handleAbort"
+          title="停止生成"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+            <rect x="6" y="6" width="12" height="12" rx="1" />
+          </svg>
+          <span class="ml-1">停止</span>
+        </button>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, nextTick, watch } from 'vue'
+import AgentSelector from './AgentSelector.vue'
 
 interface Props {
   disabled?: boolean
@@ -65,7 +69,6 @@ const canSend = computed(() => {
 })
 
 function handleInput() {
-  // 自动调整高度
   if (textareaRef.value) {
     textareaRef.value.style.height = 'auto'
     textareaRef.value.style.height = textareaRef.value.scrollHeight + 'px'
@@ -87,7 +90,6 @@ function handleSend() {
     emit('send', message)
     messageText.value = ''
 
-    // 重置高度
     if (textareaRef.value) {
       textareaRef.value.style.height = 'auto'
     }
@@ -99,7 +101,6 @@ function handleAbort() {
   emit('abort')
 }
 
-// 暴露 focus 方法
 function focus() {
   nextTick(() => {
     textareaRef.value?.focus()
@@ -110,7 +111,6 @@ defineExpose({
   focus
 })
 
-// 监听 disabled 变化，自动 focus
 watch(() => props.disabled, (newVal, oldVal) => {
   if (oldVal && !newVal) {
     focus()
@@ -128,6 +128,7 @@ watch(() => props.disabled, (newVal, oldVal) => {
 .textarea {
   width: 100%;
   padding: 0.75rem;
+  padding-bottom: 2.75rem;
   border: 1px solid hsl(var(--input));
   border-radius: calc(var(--radius) - 2px);
   background: hsl(var(--background));
@@ -136,7 +137,7 @@ watch(() => props.disabled, (newVal, oldVal) => {
   line-height: 1.25rem;
   resize: none;
   font-family: inherit;
-  min-height: 76px;
+  min-height: 90px;
   max-height: 200px;
   overflow-y: auto;
 }
@@ -154,6 +155,16 @@ watch(() => props.disabled, (newVal, oldVal) => {
 
 .textarea::placeholder {
   color: hsl(var(--muted-foreground));
+}
+
+.input-actions {
+  position: absolute;
+  bottom: 0.5rem;
+  left: 0.5rem;
+  right: 0.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
 .btn-stop {

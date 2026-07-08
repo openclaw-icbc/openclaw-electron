@@ -75,16 +75,21 @@ const lastScrollHeight = ref(0)
 const lastScrollTop = ref<number | null>(null)
 
 // 自动滚动到底部
+// 使用 setTimeout(0) 而非 nextTick：nextTick 只保证 Vue DOM patch 完成，
+// 但 MessageItem 的 v-html（markdown 渲染）注入后浏览器可能还需要额外的 reflow，
+// setTimeout(0) 确保所有布局和渲染都已完成后再读取 scrollHeight
 const scrollToBottom = (force = false) => {
   nextTick(() => {
-    if (containerRef.value) {
-      if (force || !isUserScrolledUp.value) {
-        containerRef.value.scrollTop = containerRef.value.scrollHeight
+    setTimeout(() => {
+      if (containerRef.value) {
+        if (force || !isUserScrolledUp.value) {
+          containerRef.value.scrollTop = containerRef.value.scrollHeight
+        }
+        // 在 DOM 更新后记录最新的滚动高度和位置
+        lastScrollHeight.value = containerRef.value.scrollHeight
+        lastScrollTop.value = containerRef.value.scrollTop
       }
-      // 在 DOM 更新后记录最新的滚动高度和位置
-      lastScrollHeight.value = containerRef.value.scrollHeight
-      lastScrollTop.value = containerRef.value.scrollTop
-    }
+    }, 0)
   })
 }
 
@@ -101,25 +106,27 @@ watch(() => props.messages, (newMessages) => {
     scrollToBottom(true)
   } else if (currentCount === previousMessageCount.value && props.streamingMessageId) {
     // 消息数量未变但有流式消息，说明是内容更新
-    // 在 nextTick 中检测内容增长（此时 DOM 已更新）
+    // 在 DOM 完全稳定后检测内容增长
     const prevHeight = lastScrollHeight.value
     const prevTop = lastScrollTop.value
     nextTick(() => {
-      if (!containerRef.value) return
-      const newHeight = containerRef.value.scrollHeight
-      const newTop = containerRef.value.scrollTop
-      const contentGrew = newHeight > prevHeight
-      // 如果 scrollTop 没变，说明用户没有手动滚动，是内容增长撑大了容器
-      const userScrolled = prevTop !== null && newTop !== prevTop
+      setTimeout(() => {
+        if (!containerRef.value) return
+        const newHeight = containerRef.value.scrollHeight
+        const newTop = containerRef.value.scrollTop
+        const contentGrew = newHeight > prevHeight
+        // 如果 scrollTop 没变，说明用户没有手动滚动，是内容增长撑大了容器
+        const userScrolled = prevTop !== null && newTop !== prevTop
 
-      if (contentGrew && !userScrolled) {
-        // 内容增长且用户未手动滚动 → 强制跟随到底部
-        containerRef.value.scrollTop = newHeight
-      } else if (!isUserScrolledUp.value) {
-        containerRef.value.scrollTop = newHeight
-      }
-      lastScrollHeight.value = newHeight
-      lastScrollTop.value = newTop
+        if (contentGrew && !userScrolled) {
+          // 内容增长且用户未手动滚动 → 强制跟随到底部
+          containerRef.value.scrollTop = newHeight
+        } else if (!isUserScrolledUp.value) {
+          containerRef.value.scrollTop = newHeight
+        }
+        lastScrollHeight.value = newHeight
+        lastScrollTop.value = newTop
+      }, 0)
     })
   }
 

@@ -13,6 +13,9 @@ const __dirname = path.dirname(__filename);
 // 关键：必须在任何app方法调用之前设置所有命令行参数
 // ============================================================================
 
+// 禁用硬件加速 — 解决 GPU 合成器崩溃导致的界面卡死和黑线问题
+app.disableHardwareAcceleration();
+
 console.log('=== OpenClaw Electron 启动 ===');
 console.log('平台:', process.platform);
 console.log('架构:', process.arch);
@@ -390,6 +393,62 @@ ipcMain.handle('agents-list', async () => {
   }
   try {
     const result = await gatewayClient.listAgents();
+    return { success: true, data: result };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('teams-get', async () => {
+  return configManager.getTeams();
+});
+
+ipcMain.handle('teams-save', async (_e, teams) => {
+  return configManager.saveTeams(teams);
+});
+
+ipcMain.handle('sessions-subscribe', async (_e, params) => {
+  if (!gatewayClient) {
+    return { success: false, error: 'Not connected to gateway' };
+  }
+  try {
+    const result = await gatewayClient.subscribeSession(params.key, params.agentId);
+    return { success: true, data: result };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('sessions-unsubscribe', async (_e, params) => {
+  if (!gatewayClient) {
+    return { success: false, error: 'Not connected to gateway' };
+  }
+  try {
+    const result = await gatewayClient.unsubscribeSession(params.key, params.agentId);
+    return { success: true, data: result };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('sessions-history', async (_e, params) => {
+  if (!gatewayClient) {
+    return { success: false, error: 'Not connected to gateway' };
+  }
+  try {
+    const result = await gatewayClient.getSessionHistory(params.key, params.agentId, params.limit);
+    return { success: true, data: result };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('sessions-create', async (_e, params) => {
+  if (!gatewayClient) {
+    return { success: false, error: 'Not connected to gateway' };
+  }
+  try {
+    const result = await gatewayClient.createSession(params.key, params.label);
     return { success: true, data: result };
   } catch (error: any) {
     return { success: false, error: error.message };
